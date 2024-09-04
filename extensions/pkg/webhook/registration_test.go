@@ -13,6 +13,7 @@ import (
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -408,17 +409,20 @@ var _ = Describe("Registration", func() {
 			ctx        = context.Background()
 			fakeClient client.Client
 
-			ownerNamespaceName = "extension-provider-foo"
-			caBundle           = []byte("ca-bundle")
+			ownerNamespaceName   = "extension-provider-foo"
+			ownerClusterRoleName = "gardener-extension-provider-foo"
+			caBundle             = []byte("ca-bundle")
 
-			ownerNamespace *corev1.Namespace
-			webhookConfig  *admissionregistrationv1.MutatingWebhookConfiguration
+			ownerNamespace   *corev1.Namespace
+			ownerClusterRole *rbacv1.ClusterRole
+			webhookConfig    *admissionregistrationv1.MutatingWebhookConfiguration
 		)
 
 		BeforeEach(func() {
 			fakeClient = fakeclient.NewClientBuilder().WithScheme(kubernetesscheme.Scheme).Build()
 
 			ownerNamespace = &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: ownerNamespaceName}}
+			ownerClusterRole = &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: ownerClusterRoleName}}
 			webhookConfig = &admissionregistrationv1.MutatingWebhookConfiguration{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "admissionregistration.k8s.io/v1",
@@ -434,7 +438,7 @@ var _ = Describe("Registration", func() {
 		It("should create the webhook config w/o owner namespace", func() {
 			Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(webhookConfig), &admissionregistrationv1.MutatingWebhookConfiguration{})).To(BeNotFoundError())
 
-			Expect(ReconcileSeedWebhookConfig(ctx, fakeClient, webhookConfig, "", caBundle)).To(Succeed())
+			Expect(ReconcileSeedWebhookConfig(ctx, fakeClient, webhookConfig, "", "", caBundle)).To(Succeed())
 
 			obj := &admissionregistrationv1.MutatingWebhookConfiguration{}
 			Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(webhookConfig), obj)).To(Succeed())
@@ -448,7 +452,7 @@ var _ = Describe("Registration", func() {
 			Expect(fakeClient.Create(ctx, ownerNamespace)).To(Succeed())
 			Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(webhookConfig), &admissionregistrationv1.MutatingWebhookConfiguration{})).To(BeNotFoundError())
 
-			Expect(ReconcileSeedWebhookConfig(ctx, fakeClient, webhookConfig, ownerNamespaceName, caBundle)).To(Succeed())
+			Expect(ReconcileSeedWebhookConfig(ctx, fakeClient, webhookConfig, ownerNamespaceName, "", caBundle)).To(Succeed())
 
 			obj := &admissionregistrationv1.MutatingWebhookConfiguration{}
 			Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(webhookConfig), obj)).To(Succeed())
@@ -464,10 +468,30 @@ var _ = Describe("Registration", func() {
 			Expect(webhookConfig.Webhooks[0].ClientConfig.CABundle).To(Equal(caBundle))
 		})
 
+		It("should create the webhook config w/ owner clusterrole", func() {
+			Expect(fakeClient.Create(ctx, ownerClusterRole)).To(Succeed())
+			Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(webhookConfig), &admissionregistrationv1.MutatingWebhookConfiguration{})).To(BeNotFoundError())
+
+			Expect(ReconcileSeedWebhookConfig(ctx, fakeClient, webhookConfig, "", ownerClusterRoleName, caBundle)).To(Succeed())
+
+			obj := &admissionregistrationv1.MutatingWebhookConfiguration{}
+			Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(webhookConfig), obj)).To(Succeed())
+			Expect(obj).To(Equal(webhookConfig))
+
+			Expect(webhookConfig.OwnerReferences).To(ConsistOf(metav1.OwnerReference{
+				APIVersion:         "rbac.authorization.k8s.io/v1",
+				Kind:               "ClusterRole",
+				Name:               ownerClusterRoleName,
+				Controller:         ptr.To(true),
+				BlockOwnerDeletion: ptr.To(false),
+			}))
+			Expect(webhookConfig.Webhooks[0].ClientConfig.CABundle).To(Equal(caBundle))
+		})
+
 		It("should update the webhook config w/o owner namespace, w/o existing CA bundle", func() {
 			Expect(fakeClient.Create(ctx, webhookConfig)).To(Succeed())
 
-			Expect(ReconcileSeedWebhookConfig(ctx, fakeClient, webhookConfig, "", caBundle)).To(Succeed())
+			Expect(ReconcileSeedWebhookConfig(ctx, fakeClient, webhookConfig, "", "", caBundle)).To(Succeed())
 
 			obj := &admissionregistrationv1.MutatingWebhookConfiguration{}
 			Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(webhookConfig), obj)).To(Succeed())
@@ -481,7 +505,7 @@ var _ = Describe("Registration", func() {
 			Expect(fakeClient.Create(ctx, ownerNamespace)).To(Succeed())
 			Expect(fakeClient.Create(ctx, webhookConfig)).To(Succeed())
 
-			Expect(ReconcileSeedWebhookConfig(ctx, fakeClient, webhookConfig, ownerNamespaceName, caBundle)).To(Succeed())
+			Expect(ReconcileSeedWebhookConfig(ctx, fakeClient, webhookConfig, ownerNamespaceName, "", caBundle)).To(Succeed())
 
 			obj := &admissionregistrationv1.MutatingWebhookConfiguration{}
 			Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(webhookConfig), obj)).To(Succeed())
@@ -503,7 +527,7 @@ var _ = Describe("Registration", func() {
 			Expect(fakeClient.Create(ctx, ownerNamespace)).To(Succeed())
 			Expect(fakeClient.Create(ctx, webhookConfig)).To(Succeed())
 
-			Expect(ReconcileSeedWebhookConfig(ctx, fakeClient, webhookConfig, ownerNamespaceName, caBundle)).To(Succeed())
+			Expect(ReconcileSeedWebhookConfig(ctx, fakeClient, webhookConfig, ownerNamespaceName, "", caBundle)).To(Succeed())
 
 			obj := &admissionregistrationv1.MutatingWebhookConfiguration{}
 			Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(webhookConfig), obj)).To(Succeed())

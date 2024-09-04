@@ -12,6 +12,8 @@ import (
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
@@ -20,7 +22,6 @@ import (
 
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
 	"github.com/gardener/gardener/pkg/controllerutils"
-	"github.com/gardener/gardener/pkg/utils/kubernetes"
 )
 
 const (
@@ -159,9 +160,19 @@ func BuildWebhookConfigs(
 // ReconcileSeedWebhookConfig reconciles the given webhook config in the seed cluster.
 // If a CA bundle is given, it is injected it into all desired webhooks. If not, the CA bundle from the webhook config
 // on the cluster (if any) is kept.
-func ReconcileSeedWebhookConfig(ctx context.Context, c client.Client, webhookConfig client.Object, ownerNamespace string, caBundle []byte) error {
+func ReconcileSeedWebhookConfig(ctx context.Context, c client.Client, webhookConfig client.Object, ownerNamespace, ownerClusterRole string, caBundle []byte) error {
 	var ownerReference *metav1.OwnerReference
-	if len(ownerNamespace) > 0 {
+	if len(ownerClusterRole) > 0 {
+		clusterRole := &rbacv1.ClusterRole{}
+		if err := c.Get(ctx, client.ObjectKey{Name: ownerClusterRole}, clusterRole); err == nil {
+			ownerReference = metav1.NewControllerRef(clusterRole, rbacv1.SchemeGroupVersion.WithKind("ClusterRole"))
+			ownerReference.BlockOwnerDeletion = ptr.To(false)
+			// Continue with the ownerNamespace if ownerClusterRole was not found
+		} else if !errors.IsNotFound(err) {
+			return err
+		}
+	}
+	if len(ownerNamespace) > 0 && ownerReference == nil {
 		ns := &corev1.Namespace{}
 		if err := c.Get(ctx, client.ObjectKey{Name: ownerNamespace}, ns); err != nil {
 			return err
@@ -174,7 +185,7 @@ func ReconcileSeedWebhookConfig(ctx context.Context, c client.Client, webhookCon
 
 	if _, err := controllerutils.GetAndCreateOrStrategicMergePatch(ctx, c, webhookConfig, func() error {
 		if ownerReference != nil {
-			webhookConfig.SetOwnerReferences(kubernetes.MergeOwnerReferences(webhookConfig.GetOwnerReferences(), *ownerReference))
+			webhookConfig.SetOwnerReferences([]metav1.OwnerReference{*ownerReference})
 		}
 
 		if len(caBundle) == 0 {

@@ -348,7 +348,7 @@ func (c *AddToManagerConfig) AddToManager(ctx context.Context, mgr manager.Manag
 func (c *AddToManagerConfig) reconcileSeedWebhookConfig(mgr manager.Manager, webhookConfigs extensionswebhook.Configs, caBundle []byte) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
 		for _, webhookConfig := range webhookConfigs.GetWebhookConfigs() {
-			if err := extensionswebhook.ReconcileSeedWebhookConfig(ctx, mgr.GetClient(), webhookConfig, c.Server.Namespace, caBundle); err != nil {
+			if err := extensionswebhook.ReconcileSeedWebhookConfig(ctx, mgr.GetClient(), webhookConfig, c.Server.Namespace, extensionswebhook.NamePrefix+c.extensionName, caBundle); err != nil {
 				return fmt.Errorf("error reconciling seed webhook config: %w", err)
 			}
 		}
