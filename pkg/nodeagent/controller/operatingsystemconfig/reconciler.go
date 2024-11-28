@@ -51,6 +51,7 @@ type Reconciler struct {
 	Recorder      record.EventRecorder
 	DBus          dbus.DBus
 	FS            afero.Afero
+	FsOSC         filespkg.NodeAgentFileSystem
 	Extractor     registry.Extractor
 	CancelContext context.CancelFunc
 	HostName      string
@@ -90,7 +91,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, request reconcile.Request) (
 		return reconcile.Result{}, fmt.Errorf("failed extracting OSC from secret: %w", err)
 	}
 
-	oscChanges, err := computeOperatingSystemConfigChanges(r.FS, osc)
+	oscChanges, err := computeOperatingSystemConfigChanges(r.aferoOSC(), osc)
 	if err != nil {
 		return reconcile.Result{}, fmt.Errorf("failed calculating the OSC changes: %w", err)
 	}
@@ -255,19 +256,19 @@ func (r *Reconciler) applyChangedImageRefFiles(ctx context.Context, log logr.Log
 }
 
 func (r *Reconciler) applyChangedInlineFiles(log logr.Logger, files []extensionsv1alpha1.File) error {
-	tmpDir, err := r.FS.TempDir(nodeagentv1alpha1.TempDir, "osc-reconciliation-file-")
+	tmpDir, err := r.aferoOSC().TempDir(nodeagentv1alpha1.TempDir, "osc-reconciliation-file-")
 	if err != nil {
 		return fmt.Errorf("unable to create temporary directory: %w", err)
 	}
 
-	defer func() { utilruntime.HandleError(r.FS.RemoveAll(tmpDir)) }()
+	defer func() { utilruntime.HandleError(r.aferoOSC().RemoveAll(tmpDir)) }()
 
 	for _, file := range files {
 		if file.Content.Inline == nil {
 			continue
 		}
 
-		if err := r.FS.MkdirAll(filepath.Dir(file.Path), defaultDirPermissions); err != nil {
+		if err := r.aferoOSC().MkdirAll(filepath.Dir(file.Path), defaultDirPermissions); err != nil {
 			return fmt.Errorf("unable to create directory %q: %w", file.Path, err)
 		}
 
@@ -277,11 +278,11 @@ func (r *Reconciler) applyChangedInlineFiles(log logr.Logger, files []extensions
 		}
 
 		tmpFilePath := filepath.Join(tmpDir, filepath.Base(file.Path))
-		if err := r.FS.WriteFile(tmpFilePath, data, getFilePermissions(file)); err != nil {
+		if err := r.aferoOSC().WriteFile(tmpFilePath, data, getFilePermissions(file)); err != nil {
 			return fmt.Errorf("unable to create temporary file %q: %w", tmpFilePath, err)
 		}
 
-		if err := filespkg.Move(r.FS, tmpFilePath, file.Path); err != nil {
+		if err := filespkg.Move(r.aferoOSC(), tmpFilePath, file.Path); err != nil {
 			return fmt.Errorf("unable to rename temporary file %q to %q: %w", tmpFilePath, file.Path, err)
 		}
 
@@ -293,7 +294,7 @@ func (r *Reconciler) applyChangedInlineFiles(log logr.Logger, files []extensions
 
 func (r *Reconciler) removeDeletedFiles(log logr.Logger, files []extensionsv1alpha1.File) error {
 	for _, file := range files {
-		if err := r.FS.Remove(file.Path); err != nil && !errors.Is(err, afero.ErrFileNotFound) {
+		if err := r.aferoOSC().Remove(file.Path); err != nil && !errors.Is(err, afero.ErrFileNotFound) {
 			return fmt.Errorf("unable to delete no longer needed file %q: %w", file.Path, err)
 		}
 
@@ -308,21 +309,21 @@ func (r *Reconciler) applyChangedUnits(ctx context.Context, log logr.Logger, uni
 		unitFilePath := path.Join(etcSystemdSystem, unit.Name)
 
 		if unit.Content != nil {
-			oldUnitContent, err := r.FS.ReadFile(unitFilePath)
+			oldUnitContent, err := r.aferoOSC().ReadFile(unitFilePath)
 			if err != nil && !errors.Is(err, afero.ErrFileNotFound) {
 				return fmt.Errorf("unable to read existing unit file %q for %q: %w", unitFilePath, unit.Name, err)
 			}
 
 			newUnitContent := []byte(*unit.Content)
 			if !bytes.Equal(newUnitContent, oldUnitContent) {
-				if err := r.FS.WriteFile(unitFilePath, newUnitContent, defaultFilePermissions); err != nil {
+				if err := r.aferoOSC().WriteFile(unitFilePath, newUnitContent, defaultFilePermissions); err != nil {
 					return fmt.Errorf("unable to write unit file %q for %q: %w", unitFilePath, unit.Name, err)
 				}
 				log.Info("Successfully applied new or changed unit file", "path", unitFilePath)
 			}
 
 			// ensure file permissions are restored in case somebody changed them manually
-			if err := r.FS.Chmod(unitFilePath, defaultFilePermissions); err != nil {
+			if err := r.aferoOSC().Chmod(unitFilePath, defaultFilePermissions); err != nil {
 				return fmt.Errorf("unable to ensure permissions for unit file %q for %q: %w", unitFilePath, unit.Name, err)
 			}
 		}
@@ -330,39 +331,39 @@ func (r *Reconciler) applyChangedUnits(ctx context.Context, log logr.Logger, uni
 		dropInDirectory := unitFilePath + ".d"
 
 		if len(unit.DropIns) == 0 {
-			if err := r.FS.RemoveAll(dropInDirectory); err != nil && !errors.Is(err, afero.ErrFileNotFound) {
+			if err := r.aferoOSC().RemoveAll(dropInDirectory); err != nil && !errors.Is(err, afero.ErrFileNotFound) {
 				return fmt.Errorf("unable to delete systemd drop-in folder for unit %q: %w", unit.Name, err)
 			}
 		} else {
-			if err := r.FS.MkdirAll(dropInDirectory, defaultDirPermissions); err != nil {
+			if err := r.aferoOSC().MkdirAll(dropInDirectory, defaultDirPermissions); err != nil {
 				return fmt.Errorf("unable to create drop-in directory %q for unit %q: %w", dropInDirectory, unit.Name, err)
 			}
 
 			for _, dropIn := range unit.dropIns.changed {
 				dropInFilePath := path.Join(dropInDirectory, dropIn.Name)
 
-				oldDropInContent, err := r.FS.ReadFile(dropInFilePath)
+				oldDropInContent, err := r.aferoOSC().ReadFile(dropInFilePath)
 				if err != nil && !errors.Is(err, afero.ErrFileNotFound) {
 					return fmt.Errorf("unable to read existing drop-in file %q for unit %q: %w", dropInFilePath, unit.Name, err)
 				}
 
 				newDropInContent := []byte(dropIn.Content)
 				if !bytes.Equal(newDropInContent, oldDropInContent) {
-					if err := r.FS.WriteFile(dropInFilePath, newDropInContent, defaultFilePermissions); err != nil {
+					if err := r.aferoOSC().WriteFile(dropInFilePath, newDropInContent, defaultFilePermissions); err != nil {
 						return fmt.Errorf("unable to write drop-in file %q for unit %q: %w", dropInFilePath, unit.Name, err)
 					}
 					log.Info("Successfully applied new or changed drop-in file for unit", "path", dropInFilePath, "unit", unit.Name)
 				}
 
 				// ensure file permissions are restored in case somebody changed them manually
-				if err := r.FS.Chmod(dropInFilePath, defaultFilePermissions); err != nil {
+				if err := r.aferoOSC().Chmod(dropInFilePath, defaultFilePermissions); err != nil {
 					return fmt.Errorf("unable to ensure permissions for drop-in file %q for unit %q: %w", unitFilePath, unit.Name, err)
 				}
 			}
 
 			for _, dropIn := range unit.dropIns.deleted {
 				dropInFilePath := path.Join(dropInDirectory, dropIn.Name)
-				if err := r.FS.Remove(dropInFilePath); err != nil && !errors.Is(err, afero.ErrFileNotFound) {
+				if err := r.aferoOSC().Remove(dropInFilePath); err != nil && !errors.Is(err, afero.ErrFileNotFound) {
 					return fmt.Errorf("unable to delete drop-in file %q for unit %q: %w", dropInFilePath, unit.Name, err)
 				}
 				log.Info("Successfully removed no longer needed drop-in file for unit", "path", dropInFilePath, "unitName", unit.Name)
@@ -389,26 +390,28 @@ func (r *Reconciler) removeDeletedUnits(ctx context.Context, log logr.Logger, no
 	for _, unit := range units {
 		unitFilePath := path.Join(etcSystemdSystem, unit.Name)
 
-		unitFileExists, err := r.FS.Exists(unitFilePath)
-		if err != nil {
-			return fmt.Errorf("unable to check whether unit file %q exists: %w", unitFilePath, err)
+		if r.FsOSC.GetFileOperation(unitFilePath) == filespkg.FileCreated {
+			unitFileExists, err := r.aferoOSC().Exists(unitFilePath)
+			if err != nil {
+				return fmt.Errorf("unable to check whether unit file %q exists: %w", unitFilePath, err)
+			}
+
+			if unitFileExists {
+				if err := r.DBus.Disable(ctx, unit.Name); err != nil {
+					return fmt.Errorf("unable to disable deleted unit %q: %w", unit.Name, err)
+				}
+
+				if err := r.DBus.Stop(ctx, r.Recorder, node, unit.Name); err != nil {
+					return fmt.Errorf("unable to stop deleted unit %q: %w", unit.Name, err)
+				}
+
+				if err := r.aferoOSC().Remove(unitFilePath); err != nil && !errors.Is(err, afero.ErrFileNotFound) {
+					return fmt.Errorf("unable to delete systemd unit file of deleted unit %q: %w", unit.Name, err)
+				}
+			}
 		}
 
-		if unitFileExists {
-			if err := r.DBus.Disable(ctx, unit.Name); err != nil {
-				return fmt.Errorf("unable to disable deleted unit %q: %w", unit.Name, err)
-			}
-
-			if err := r.DBus.Stop(ctx, r.Recorder, node, unit.Name); err != nil {
-				return fmt.Errorf("unable to stop deleted unit %q: %w", unit.Name, err)
-			}
-
-			if err := r.FS.Remove(unitFilePath); err != nil && !errors.Is(err, afero.ErrFileNotFound) {
-				return fmt.Errorf("unable to delete systemd unit file of deleted unit %q: %w", unit.Name, err)
-			}
-		}
-
-		if err := r.FS.RemoveAll(unitFilePath + ".d"); err != nil && !errors.Is(err, afero.ErrFileNotFound) {
+		if err := r.aferoOSC().RemoveAll(unitFilePath + ".d"); err != nil && !errors.Is(err, afero.ErrFileNotFound) {
 			return fmt.Errorf("unable to delete systemd drop-in folder of deleted unit %q: %w", unit.Name, err)
 		}
 
@@ -467,4 +470,8 @@ func (r *Reconciler) executeUnitCommands(ctx context.Context, log logr.Logger, n
 	}
 
 	return mustRestartGardenerNodeAgent, flow.Parallel(fns...)(ctx)
+}
+
+func (r *Reconciler) aferoOSC() afero.Afero {
+	return afero.Afero{Fs: r.FsOSC}
 }
