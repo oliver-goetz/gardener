@@ -23,6 +23,7 @@ import (
 	"github.com/gardener/gardener/pkg/component"
 	kubeapiserverconstants "github.com/gardener/gardener/pkg/component/kubernetes/apiserver/constants"
 	"github.com/gardener/gardener/pkg/controllerutils"
+	"github.com/gardener/gardener/pkg/features"
 	"github.com/gardener/gardener/pkg/utils/istio"
 	kubernetesutils "github.com/gardener/gardener/pkg/utils/kubernetes"
 	"github.com/gardener/gardener/pkg/utils/managedresources"
@@ -99,6 +100,7 @@ type envoyFilterTemplateValues struct {
 	Host                        string
 	Port                        int
 	APIServerClusterIPPrefixLen int
+	IstioTLSTermination         bool
 }
 
 func (s *sni) Deploy(ctx context.Context) error {
@@ -128,6 +130,7 @@ func (s *sni) Deploy(ctx context.Context) error {
 			Host:                        hostName,
 			Port:                        kubeapiserverconstants.Port,
 			APIServerClusterIPPrefixLen: apiServerClusterIPPrefixLen,
+			IstioTLSTermination:         features.DefaultFeatureGate.Enabled(features.IstioTLSTermination),
 		}); err != nil {
 			return err
 		}
@@ -146,15 +149,33 @@ func (s *sni) Deploy(ctx context.Context) error {
 		}
 	}
 
-	if _, err := controllerutils.GetAndCreateOrMergePatch(ctx, s.client, destinationRule, istio.DestinationRuleWithLocalityPreference(destinationRule, getLabels(), hostName)); err != nil {
+	var destinationMutateFn func() error
+	destinationMutateFn = istio.DestinationRuleWithLocalityPreference(destinationRule, getLabels(), hostName)
+	if features.DefaultFeatureGate.Enabled(features.IstioTLSTermination) {
+		destinationMutateFn = istio.DestinationRuleWithLocalityPreferenceAndTLSTermination(destinationRule, getLabels(), hostName, s.valuesFunc().Hosts[0], s.namespace+"-kube-apiserver-ca")
+	}
+
+	if _, err := controllerutils.GetAndCreateOrMergePatch(ctx, s.client, destinationRule, destinationMutateFn); err != nil {
 		return err
 	}
 
-	if _, err := controllerutils.GetAndCreateOrMergePatch(ctx, s.client, gateway, istio.GatewayWithTLSPassthrough(gateway, getLabels(), s.valuesFunc().IstioIngressGateway.Labels, s.valuesFunc().Hosts, kubeapiserverconstants.Port)); err != nil {
+	var gatewayMutateFn func() error
+	gatewayMutateFn = istio.GatewayWithTLSPassthrough(gateway, getLabels(), s.valuesFunc().IstioIngressGateway.Labels, s.valuesFunc().Hosts, kubeapiserverconstants.Port)
+	if features.DefaultFeatureGate.Enabled(features.IstioTLSTermination) {
+		gatewayMutateFn = istio.GatewayWithMutalTLS(gateway, getLabels(), s.valuesFunc().IstioIngressGateway.Labels, s.valuesFunc().Hosts, kubeapiserverconstants.Port, s.namespace+"-kube-apiserver-tls")
+	}
+
+	if _, err := controllerutils.GetAndCreateOrMergePatch(ctx, s.client, gateway, gatewayMutateFn); err != nil {
 		return err
 	}
 
-	if _, err := controllerutils.GetAndCreateOrMergePatch(ctx, s.client, virtualService, istio.VirtualServiceWithSNIMatch(virtualService, getLabels(), s.valuesFunc().Hosts, gateway.Name, kubeapiserverconstants.Port, hostName)); err != nil {
+	var virtualServiceMutateFn func() error
+	virtualServiceMutateFn = istio.VirtualServiceWithSNIMatch(virtualService, getLabels(), s.valuesFunc().Hosts, gateway.Name, kubeapiserverconstants.Port, hostName)
+	if features.DefaultFeatureGate.Enabled(features.IstioTLSTermination) {
+		virtualServiceMutateFn = istio.VirtualServiceForTLSTermination(virtualService, getLabels(), s.valuesFunc().Hosts, gateway.Name, kubeapiserverconstants.Port, hostName)
+	}
+
+	if _, err := controllerutils.GetAndCreateOrMergePatch(ctx, s.client, virtualService, virtualServiceMutateFn); err != nil {
 		return err
 	}
 

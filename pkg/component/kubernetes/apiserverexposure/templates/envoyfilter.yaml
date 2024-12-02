@@ -48,3 +48,64 @@ spec:
           prefix_ranges:
           - address_prefix: {{ .APIServerClusterIP }}
             prefix_len: {{ .APIServerClusterIPPrefixLen }}
+  {{- if .IstioTLSTermination }}
+  # The first patch adds the lua filter to the listener/http connection manager
+  - applyTo: HTTP_FILTER
+    match:
+      context: GATEWAY
+      listener:
+        portNumber: 9443
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+            subFilter:
+              name: "envoy.filters.http.router"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        # lua filter specification
+        name: envoy.filters.http.lua
+        typed_config:
+          "@type": "type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua"
+          defaultSourceCode:
+            inlineString: |
+              local function startsWith(str, prefix)
+                return string.sub(str, 1, #prefix) == prefix
+              end
+
+              function envoy_on_request(request_handle)
+                -- TODO ensure that a request never succeeds unless the lua script works
+                -- Drop all x-remote- headers
+                local remove = {}
+                for key, value in pairs(request_handle:headers()) do
+                  -- request_handle:logInfo("key "..key)
+                  if startsWith(key:lower(), "x-remote-") then
+                    remove[key] = ""
+                  end
+                end
+                for key, value in pairs(remove) do
+                  request_handle:headers():remove(key)
+                end
+
+                local validCn = false
+                local streamInfo = request_handle:streamInfo()
+                local ssl = streamInfo:downstreamSslConnection()
+
+                -- TODO switch to ssl:parsedSubjectPeerCertificate() once it is available
+                local cn = ssl:subjectPeerCertificate()
+                -- request_handle:logInfo("subject: " .. tostring(cn))
+
+                for pair in string.gmatch(cn, "([^,]+)") do
+                    -- request_handle:logInfo("parsing: " .. pair)
+                    local key, value = pair:match("([^=]+)=([^=]+)")
+                    if key == "CN" then
+                      request_handle:headers():add("X-Remote-User", value)
+                    elseif key == "O" then
+                      request_handle:headers():add("X-Remote-Group", value)
+                    else
+                      -- kill request
+                      request_handle:respond({[":status"] = "400"}, "invalid certificate subject")
+                    end
+                end
+              end
+  {{- end }}

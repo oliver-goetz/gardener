@@ -33,6 +33,7 @@ import (
 	"github.com/gardener/gardener/pkg/component/apiserver"
 	"github.com/gardener/gardener/pkg/component/observability/monitoring/prometheus/garden"
 	"github.com/gardener/gardener/pkg/component/observability/monitoring/prometheus/shoot"
+	"github.com/gardener/gardener/pkg/features"
 	"github.com/gardener/gardener/pkg/utils"
 	kubernetesutils "github.com/gardener/gardener/pkg/utils/kubernetes"
 	"github.com/gardener/gardener/pkg/utils/kubernetes/health"
@@ -375,6 +376,19 @@ func (k *kubeAPIServer) Deploy(ctx context.Context) error {
 		return err
 	}
 
+	if features.DefaultFeatureGate.Enabled(features.IstioTLSTermination) {
+		if err := k.reconcileIstioTLSSecrets(ctx); err != nil {
+			return err
+		}
+	} else {
+		if err := kubernetesutils.DeleteObjects(ctx, k.client.Client(),
+			k.emptyIstioTLSSecret(),
+			k.emptyIstioCASecret(),
+		); err != nil {
+			return err
+		}
+	}
+
 	var serviceAccount *corev1.ServiceAccount
 	if k.values.VPN.Enabled && k.values.VPN.HighAvailabilityEnabled {
 		serviceAccount = k.emptyServiceAccount()
@@ -466,6 +480,8 @@ func (k *kubeAPIServer) Destroy(ctx context.Context) error {
 		k.emptyRoleBindingHAVPN(),
 		k.emptyServiceMonitor(),
 		k.emptyPrometheusRule(),
+		k.emptyIstioTLSSecret(),
+		k.emptyIstioCASecret(),
 	)
 }
 

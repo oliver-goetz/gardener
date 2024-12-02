@@ -17,6 +17,7 @@ import (
 	clientcmdv1 "k8s.io/client-go/tools/clientcmd/api/v1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
@@ -295,6 +296,67 @@ func (k *kubeAPIServer) reconcileSecretAuthorizationWebhooksKubeconfigs(ctx cont
 
 	utilruntime.Must(kubernetesutils.MakeUnique(secret))
 	return client.IgnoreAlreadyExists(k.client.Client().Create(ctx, secret))
+}
+
+func (k *kubeAPIServer) emptyIstioCASecret() *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      k.namespace + "-kube-apiserver-ca",
+			Namespace: "istio-ingress",
+		},
+	}
+}
+
+func (k *kubeAPIServer) emptyIstioTLSSecret() *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      k.namespace + "-kube-apiserver-tls",
+			Namespace: "istio-ingress",
+		},
+	}
+}
+
+func (k *kubeAPIServer) reconcileIstioTLSSecrets(ctx context.Context) error {
+	secretCA, _ := k.secretsManager.Get(v1beta1constants.SecretNameCACluster)
+	secretCAClient, _ := k.secretsManager.Get(v1beta1constants.SecretNameCAClient)
+	secretCAFrontProxy, _ := k.secretsManager.Get(v1beta1constants.SecretNameCAFrontProxy, secretsmanager.Current)
+	secretServer, _ := k.secretsManager.Get(secretNameServerCert, secretsmanager.Current)
+
+	istioTLSSecret := k.emptyIstioTLSSecret()
+	if _, err := controllerutil.CreateOrUpdate(
+		ctx,
+		k.client.Client(),
+		istioTLSSecret,
+		func() error {
+			istioTLSSecret.Data = map[string][]byte{
+				"cacert": secretCAClient.Data[secretsutils.DataKeyCertificateBundle],
+				"key":    secretServer.Data[secretsutils.DataKeyPrivateKey],
+				"cert":   secretServer.Data[secretsutils.DataKeyCertificate],
+			}
+			return nil
+		},
+	); err != nil {
+		return fmt.Errorf("failed to create or update secret %s in namespace %s: %w", istioTLSSecret.Name, istioTLSSecret.Namespace, err)
+	}
+
+	istioCASecret := k.emptyIstioCASecret()
+	if _, err := controllerutil.CreateOrUpdate(
+		ctx,
+		k.client.Client(),
+		istioCASecret,
+		func() error {
+			istioCASecret.Data = map[string][]byte{
+				"cacert": secretCA.Data[secretsutils.DataKeyCertificateBundle],
+				"key":    secretCAFrontProxy.Data[secretsutils.DataKeyPrivateKeyCA],
+				"cert":   secretCAFrontProxy.Data[secretsutils.DataKeyCertificateCA],
+			}
+			return nil
+		},
+	); err != nil {
+		return fmt.Errorf("failed to create or update secret %s in namespace %s: %w", istioTLSSecret.Name, istioTLSSecret.Namespace, err)
+	}
+
+	return nil
 }
 
 func authorizationWebhookKubeconfigFilename(name string) string {
