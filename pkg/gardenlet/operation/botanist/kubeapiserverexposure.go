@@ -14,11 +14,32 @@ import (
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
 	"github.com/gardener/gardener/pkg/component"
 	kubeapiserverexposure "github.com/gardener/gardener/pkg/component/kubernetes/apiserverexposure"
+	"github.com/gardener/gardener/pkg/features"
 	gardenerutils "github.com/gardener/gardener/pkg/utils/gardener"
 )
 
 // DefaultKubeAPIServerService returns a deployer for the kube-apiserver service.
 func (b *Botanist) DefaultKubeAPIServerService() component.DeployWaiter {
+	waiters := []component.Deployer{
+		b.defaultKubeAPIServerServiceWithSuffix("", true),
+	}
+	if features.DefaultFeatureGate.Enabled(features.IstioTLSTermination) {
+		waiters = append(waiters, b.defaultKubeAPIServerServiceWithSuffix(kubeapiserverexposure.MutualTLSServiceNameSuffix, false))
+	}
+	return component.OpWait(waiters...)
+}
+
+func (b *Botanist) defaultKubeAPIServerServiceWithSuffix(suffix string, register bool) component.DeployWaiter {
+	clusterIPFunc := b.setAPIServerServiceClusterIP
+	ingressFunc := func(address string) {
+		b.APIServerAddress = address
+		b.newDNSComponentsTargetingAPIServerAddress()
+	}
+	if !register {
+		clusterIPFunc = nil
+		ingressFunc = nil
+	}
+
 	return kubeapiserverexposure.NewService(
 		b.Logger,
 		b.SeedClientSet.Client(),
@@ -27,16 +48,14 @@ func (b *Botanist) DefaultKubeAPIServerService() component.DeployWaiter {
 			AnnotationsFunc:             func() map[string]string { return b.IstioLoadBalancerAnnotations() },
 			TopologyAwareRoutingEnabled: b.Shoot.TopologyAwareRoutingEnabled,
 			RuntimeKubernetesVersion:    b.Seed.KubernetesVersion,
+			NameSuffix:                  suffix,
 		},
 		func() client.ObjectKey {
 			return client.ObjectKey{Name: b.IstioServiceName(), Namespace: b.IstioNamespace()}
 		},
 		nil,
-		b.setAPIServerServiceClusterIP,
-		func(address string) {
-			b.APIServerAddress = address
-			b.newDNSComponentsTargetingAPIServerAddress()
-		},
+		clusterIPFunc,
+		ingressFunc,
 	)
 }
 

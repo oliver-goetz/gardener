@@ -12,6 +12,7 @@ import (
 	"text/template"
 
 	"github.com/Masterminds/sprig/v3"
+	istioapinetworkingv1beta1 "istio.io/api/networking/v1beta1"
 	istionetworkingv1alpha3 "istio.io/client-go/pkg/apis/networking/v1alpha3"
 	istionetworkingv1beta1 "istio.io/client-go/pkg/apis/networking/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,6 +32,10 @@ import (
 )
 
 const managedResourceName = "kube-apiserver-sni"
+
+// MutualTLSServiceNameSuffix is used to create a second service instance for
+// use with mutual tls authentication from istio using the ca-front-proxy secrets
+const MutualTLSServiceNameSuffix = "-mutual"
 
 var (
 	//go:embed templates/envoyfilter.yaml
@@ -98,6 +103,7 @@ type envoyFilterTemplateValues struct {
 	Name                        string
 	Namespace                   string
 	Host                        string
+	MutualTLSHost               string
 	Port                        int
 	APIServerClusterIPPrefixLen int
 	IstioTLSTermination         bool
@@ -107,11 +113,13 @@ func (s *sni) Deploy(ctx context.Context) error {
 	var (
 		values = s.valuesFunc()
 
-		destinationRule = s.emptyDestinationRule()
-		gateway         = s.emptyGateway()
-		virtualService  = s.emptyVirtualService()
+		destinationRule       = s.emptyDestinationRule()
+		mutualDestinationRule = s.emptyMutualDestinationRule()
+		gateway               = s.emptyGateway()
+		virtualService        = s.emptyVirtualService()
 
 		hostName        = fmt.Sprintf("%s.%s.svc.%s", s.name, s.namespace, gardencorev1beta1.DefaultDomain)
+		mTLSHostName    = fmt.Sprintf("%s.%s.svc.%s", s.name+MutualTLSServiceNameSuffix, s.namespace, gardencorev1beta1.DefaultDomain)
 		envoyFilterSpec bytes.Buffer
 	)
 
@@ -129,6 +137,7 @@ func (s *sni) Deploy(ctx context.Context) error {
 			Namespace:                   envoyFilter.Namespace,
 			Host:                        hostName,
 			Port:                        kubeapiserverconstants.Port,
+			MutualTLSHost:               mTLSHostName,
 			APIServerClusterIPPrefixLen: apiServerClusterIPPrefixLen,
 			IstioTLSTermination:         features.DefaultFeatureGate.Enabled(features.IstioTLSTermination),
 		}); err != nil {
@@ -152,10 +161,20 @@ func (s *sni) Deploy(ctx context.Context) error {
 	var destinationMutateFn func() error
 	destinationMutateFn = istio.DestinationRuleWithLocalityPreference(destinationRule, getLabels(), hostName)
 	if features.DefaultFeatureGate.Enabled(features.IstioTLSTermination) {
-		destinationMutateFn = istio.DestinationRuleWithLocalityPreferenceAndTLSTermination(destinationRule, getLabels(), hostName, s.valuesFunc().Hosts[0], s.namespace+"-kube-apiserver-ca")
+		destinationMutateFn = istio.DestinationRuleWithLocalityPreferenceAndTLSTermination(destinationRule, getLabels(), hostName, s.valuesFunc().Hosts[0], s.namespace+"-kube-apiserver-ca", istioapinetworkingv1beta1.ClientTLSSettings_SIMPLE)
 	}
 
 	if _, err := controllerutils.GetAndCreateOrMergePatch(ctx, s.client, destinationRule, destinationMutateFn); err != nil {
+		return err
+	}
+
+	var destinationMutualMutateFn func() error
+	destinationMutualMutateFn = istio.DestinationRuleWithLocalityPreference(mutualDestinationRule, getLabels(), mTLSHostName)
+	if features.DefaultFeatureGate.Enabled(features.IstioTLSTermination) {
+		destinationMutualMutateFn = istio.DestinationRuleWithLocalityPreferenceAndTLSTermination(mutualDestinationRule, getLabels(), mTLSHostName, s.valuesFunc().Hosts[0], s.namespace+"-kube-apiserver-ca", istioapinetworkingv1beta1.ClientTLSSettings_MUTUAL)
+	}
+
+	if _, err := controllerutils.GetAndCreateOrMergePatch(ctx, s.client, mutualDestinationRule, destinationMutualMutateFn); err != nil {
 		return err
 	}
 
@@ -191,6 +210,7 @@ func (s *sni) Destroy(ctx context.Context) error {
 		ctx,
 		s.client,
 		s.emptyDestinationRule(),
+		s.emptyMutualDestinationRule(),
 		s.emptyEnvoyFilter(),
 		s.emptyGateway(),
 		s.emptyVirtualService(),
@@ -202,6 +222,10 @@ func (s *sni) WaitCleanup(_ context.Context) error { return nil }
 
 func (s *sni) emptyDestinationRule() *istionetworkingv1beta1.DestinationRule {
 	return &istionetworkingv1beta1.DestinationRule{ObjectMeta: metav1.ObjectMeta{Name: s.name, Namespace: s.namespace}}
+}
+
+func (s *sni) emptyMutualDestinationRule() *istionetworkingv1beta1.DestinationRule {
+	return &istionetworkingv1beta1.DestinationRule{ObjectMeta: metav1.ObjectMeta{Name: s.name + "-mutual", Namespace: s.namespace}}
 }
 
 func (s *sni) emptyEnvoyFilter() *istionetworkingv1alpha3.EnvoyFilter {

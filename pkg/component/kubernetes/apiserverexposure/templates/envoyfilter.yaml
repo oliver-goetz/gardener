@@ -94,6 +94,11 @@ spec:
                 -- TODO switch to ssl:parsedSubjectPeerCertificate() once it is available
                 local cn = ssl:subjectPeerCertificate()
                 -- request_handle:logInfo("subject: " .. tostring(cn))
+                if cn ~= "" then
+                  streamInfo:dynamicMetadata():set("envoy.filters.http.lua", "secure", "mutual")
+                end
+                -- apparently the dynamic metadata is only set when also modifying headers...
+                request_handle:headers():add("foo", "bar")
 
                 for pair in string.gmatch(cn, "([^,]+)") do
                     -- request_handle:logInfo("parsing: " .. pair)
@@ -108,4 +113,21 @@ spec:
                     end
                 end
               end
+  - applyTo: HTTP_ROUTE
+    match:
+      context: GATEWAY
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        match:
+          dynamic_metadata:
+          - filter: envoy.filters.http.lua
+            path:
+            - key: secure
+            value:
+              string_match:
+                exact: mutual
+          prefix: /
+        route:
+          cluster: outbound|{{ .Port }}||{{ .MutualTLSHost }}
   {{- end }}
