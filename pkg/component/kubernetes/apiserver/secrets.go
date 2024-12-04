@@ -302,7 +302,7 @@ func (k *kubeAPIServer) emptyIstioCASecret() *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      k.namespace + "-kube-apiserver-ca",
-			Namespace: "istio-ingress",
+			Namespace: k.values.SNI.IstioIngressGatewayNamespace,
 		},
 	}
 }
@@ -311,7 +311,7 @@ func (k *kubeAPIServer) emptyIstioTLSSecret() *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      k.namespace + "-kube-apiserver-tls",
-			Namespace: "istio-ingress",
+			Namespace: k.values.SNI.IstioIngressGatewayNamespace,
 		},
 	}
 }

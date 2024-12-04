@@ -220,6 +220,8 @@ type SNIConfig struct {
 	AdvertiseAddress string
 	// TLS contains information for configuring the TLS SNI settings for the kube-apiserver.
 	TLS []TLSSNIConfig
+	// IstioIngressGatewayNamespace contains the namespace of the istio ingress gateway.
+	IstioIngressGatewayNamespace string
 }
 
 // TLSSNIConfig contains information for configuring the TLS SNI settings for the kube-apiserver.
