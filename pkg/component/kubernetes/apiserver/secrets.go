@@ -30,6 +30,10 @@ import (
 )
 
 const (
+	// IstioCASecretSuffix is the suffix for the Istio CA secret.
+	IstioCASecretSuffix = "-kube-apiserver-ca"
+	// IstioTLSSecretSuffix is the suffix for the Istio TLS secret.
+	IstioTLSSecretSuffix = "-kube-apiserver-tls"
 	// SecretStaticTokenName is a constant for the name of the static-token secret.
 	SecretStaticTokenName = "kube-apiserver-static-token" // #nosec G101 -- No credential.
 
@@ -301,7 +305,7 @@ func (k *kubeAPIServer) reconcileSecretAuthorizationWebhooksKubeconfigs(ctx cont
 func (k *kubeAPIServer) emptyIstioCASecret() *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      k.namespace + "-kube-apiserver-ca",
+			Name:      k.namespace + IstioCASecretSuffix,
 			Namespace: k.values.SNI.IstioIngressGatewayNamespace,
 		},
 	}
@@ -310,7 +314,7 @@ func (k *kubeAPIServer) emptyIstioCASecret() *corev1.Secret {
 func (k *kubeAPIServer) emptyIstioTLSSecret() *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      k.namespace + "-kube-apiserver-tls",
+			Name:      k.namespace + IstioTLSSecretSuffix,
 			Namespace: k.values.SNI.IstioIngressGatewayNamespace,
 		},
 	}

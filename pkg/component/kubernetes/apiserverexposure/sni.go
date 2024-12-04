@@ -22,6 +22,7 @@ import (
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	"github.com/gardener/gardener/pkg/client/kubernetes"
 	"github.com/gardener/gardener/pkg/component"
+	"github.com/gardener/gardener/pkg/component/kubernetes/apiserver"
 	kubeapiserverconstants "github.com/gardener/gardener/pkg/component/kubernetes/apiserver/constants"
 	"github.com/gardener/gardener/pkg/controllerutils"
 	"github.com/gardener/gardener/pkg/features"
@@ -161,7 +162,7 @@ func (s *sni) Deploy(ctx context.Context) error {
 	var destinationMutateFn func() error
 	destinationMutateFn = istio.DestinationRuleWithLocalityPreference(destinationRule, getLabels(), hostName)
 	if features.DefaultFeatureGate.Enabled(features.IstioTLSTermination) {
-		destinationMutateFn = istio.DestinationRuleWithLocalityPreferenceAndTLSTermination(destinationRule, getLabels(), hostName, s.valuesFunc().Hosts[0], s.namespace+"-kube-apiserver-ca", istioapinetworkingv1beta1.ClientTLSSettings_SIMPLE)
+		destinationMutateFn = istio.DestinationRuleWithLocalityPreferenceAndTLSTermination(destinationRule, getLabels(), hostName, s.valuesFunc().Hosts[0], s.namespace+apiserver.IstioCASecretSuffix, istioapinetworkingv1beta1.ClientTLSSettings_SIMPLE)
 	}
 
 	if _, err := controllerutils.GetAndCreateOrMergePatch(ctx, s.client, destinationRule, destinationMutateFn); err != nil {
@@ -171,7 +172,7 @@ func (s *sni) Deploy(ctx context.Context) error {
 	var destinationMutualMutateFn func() error
 	destinationMutualMutateFn = istio.DestinationRuleWithLocalityPreference(mutualDestinationRule, getLabels(), mTLSHostName)
 	if features.DefaultFeatureGate.Enabled(features.IstioTLSTermination) {
-		destinationMutualMutateFn = istio.DestinationRuleWithLocalityPreferenceAndTLSTermination(mutualDestinationRule, getLabels(), mTLSHostName, s.valuesFunc().Hosts[0], s.namespace+"-kube-apiserver-ca", istioapinetworkingv1beta1.ClientTLSSettings_MUTUAL)
+		destinationMutualMutateFn = istio.DestinationRuleWithLocalityPreferenceAndTLSTermination(mutualDestinationRule, getLabels(), mTLSHostName, s.valuesFunc().Hosts[0], s.namespace+apiserver.IstioCASecretSuffix, istioapinetworkingv1beta1.ClientTLSSettings_MUTUAL)
 	}
 
 	if _, err := controllerutils.GetAndCreateOrMergePatch(ctx, s.client, mutualDestinationRule, destinationMutualMutateFn); err != nil {
@@ -181,7 +182,7 @@ func (s *sni) Deploy(ctx context.Context) error {
 	var gatewayMutateFn func() error
 	gatewayMutateFn = istio.GatewayWithTLSPassthrough(gateway, getLabels(), s.valuesFunc().IstioIngressGateway.Labels, s.valuesFunc().Hosts, kubeapiserverconstants.Port)
 	if features.DefaultFeatureGate.Enabled(features.IstioTLSTermination) {
-		gatewayMutateFn = istio.GatewayWithMutalTLS(gateway, getLabels(), s.valuesFunc().IstioIngressGateway.Labels, s.valuesFunc().Hosts, kubeapiserverconstants.Port, s.namespace+"-kube-apiserver-tls")
+		gatewayMutateFn = istio.GatewayWithMutalTLS(gateway, getLabels(), s.valuesFunc().IstioIngressGateway.Labels, s.valuesFunc().Hosts, kubeapiserverconstants.Port, s.namespace+apiserver.IstioTLSSecretSuffix)
 	}
 
 	if _, err := controllerutils.GetAndCreateOrMergePatch(ctx, s.client, gateway, gatewayMutateFn); err != nil {

@@ -20,13 +20,13 @@ import (
 
 // DefaultKubeAPIServerService returns a deployer for the kube-apiserver service.
 func (b *Botanist) DefaultKubeAPIServerService() component.DeployWaiter {
-	waiters := []component.Deployer{
+	deployer := []component.Deployer{
 		b.defaultKubeAPIServerServiceWithSuffix("", true),
 	}
 	if features.DefaultFeatureGate.Enabled(features.IstioTLSTermination) {
-		waiters = append(waiters, b.defaultKubeAPIServerServiceWithSuffix(kubeapiserverexposure.MutualTLSServiceNameSuffix, false))
+		deployer = append(deployer, b.defaultKubeAPIServerServiceWithSuffix(kubeapiserverexposure.MutualTLSServiceNameSuffix, false))
 	}
-	return component.OpWait(waiters...)
+	return component.OpWait(deployer...)
 }
 
 func (b *Botanist) defaultKubeAPIServerServiceWithSuffix(suffix string, register bool) component.DeployWaiter {
