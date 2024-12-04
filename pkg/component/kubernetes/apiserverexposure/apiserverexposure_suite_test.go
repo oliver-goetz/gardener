@@ -7,11 +7,13 @@ package apiserverexposure_test
 import (
 	"testing"
 
+	"github.com/gardener/gardener/pkg/gardenlet/features"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 func TestAPIServerExposure(t *testing.T) {
+	features.RegisterFeatureGates()
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Component Kubernetes APIServerExposure Suite")
 }
