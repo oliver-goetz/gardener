@@ -34,6 +34,7 @@ func VirtualServiceWithSNIMatch(virtualService *istionetworkingv1beta1.VirtualSe
 	}
 }
 
+// VirtualServiceForTLSTermination returns a function for use with a gateway that performs TLS termination.
 func VirtualServiceForTLSTermination(virtualService *istionetworkingv1beta1.VirtualService, labels map[string]string, hosts []string, gatewayName string, port uint32, destinationHost string) func() error {
 	return func() error {
 		virtualService.Labels = labels
