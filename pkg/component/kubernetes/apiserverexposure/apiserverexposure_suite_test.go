@@ -7,9 +7,10 @@ package apiserverexposure_test
 import (
 	"testing"
 
-	"github.com/gardener/gardener/pkg/gardenlet/features"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/gardener/gardener/pkg/gardenlet/features"
 )
 
 func TestAPIServerExposure(t *testing.T) {

@@ -39,16 +39,24 @@ const managedResourceName = "kube-apiserver-sni"
 const MutualTLSServiceNameSuffix = "-mutual"
 
 var (
-	//go:embed templates/envoyfilter.yaml
-	envoyFilterSpecTemplateContent string
-	envoyFilterSpecTemplate        *template.Template
+	//go:embed templates/envoyfilter-apiserver-proxy.yaml
+	envoyFilterAPIServerProxyTemplateContent string
+	envoyFilterAPIServerProxyTemplate        *template.Template
+	//go:embed templates/envoyfilter-istio-tls-termination.yaml
+	envoyFilterIstioTLSTerminationTemplateContent string
+	envoyFilterIstioTLSTerminationTemplate        *template.Template
 )
 
 func init() {
-	envoyFilterSpecTemplate = template.Must(template.
-		New("envoy-filter-spec").
+	envoyFilterAPIServerProxyTemplate = template.Must(template.
+		New("envoy-filter-apiserver-proxy").
 		Funcs(sprig.TxtFuncMap()).
-		Parse(envoyFilterSpecTemplateContent),
+		Parse(envoyFilterAPIServerProxyTemplateContent),
+	)
+	envoyFilterIstioTLSTerminationTemplate = template.Must(template.
+		New("envoy-filter-istio-tls-termination").
+		Funcs(sprig.TxtFuncMap()).
+		Parse(envoyFilterIstioTLSTerminationTemplateContent),
 	)
 }
 
@@ -98,16 +106,24 @@ type sni struct {
 	valuesFunc func() *SNIValues
 }
 
-type envoyFilterTemplateValues struct {
+type envoyFilterAPIServerProxyTemplateValues struct {
 	*APIServerProxy
 	IngressGatewayLabels        map[string]string
 	Name                        string
 	Namespace                   string
+	OwnerRefNamespace           string
 	Host                        string
 	MutualTLSHost               string
 	Port                        int
 	APIServerClusterIPPrefixLen int
-	IstioTLSTermination         bool
+}
+
+type envoyFilterIstioTLSTerminationTemplateValues struct {
+	IngressGatewayLabels map[string]string
+	Name                 string
+	Namespace            string
+	MutualTLSHost        string
+	Port                 int
 }
 
 func (s *sni) Deploy(ctx context.Context) error {
@@ -119,36 +135,57 @@ func (s *sni) Deploy(ctx context.Context) error {
 		gateway               = s.emptyGateway()
 		virtualService        = s.emptyVirtualService()
 
-		hostName        = fmt.Sprintf("%s.%s.svc.%s", s.name, s.namespace, gardencorev1beta1.DefaultDomain)
-		mTLSHostName    = fmt.Sprintf("%s.%s.svc.%s", s.name+MutualTLSServiceNameSuffix, s.namespace, gardencorev1beta1.DefaultDomain)
-		envoyFilterSpec bytes.Buffer
+		hostName                       = fmt.Sprintf("%s.%s.svc.%s", s.name, s.namespace, gardencorev1beta1.DefaultDomain)
+		mTLSHostName                   = fmt.Sprintf("%s.%s.svc.%s", s.name+MutualTLSServiceNameSuffix, s.namespace, gardencorev1beta1.DefaultDomain)
+		envoyFilterAPIServerProxy      bytes.Buffer
+		envoyFilterIstioTLSTermination bytes.Buffer
 	)
 
+	registry := managedresources.NewRegistry(kubernetes.SeedScheme, kubernetes.SeedCodec, kubernetes.SeedSerializer)
+
 	if values.APIServerProxy != nil {
-		envoyFilter := s.emptyEnvoyFilter()
+		envoyFilter := s.emptyEnvoyFilterAPIServerProxy()
 		apiServerClusterIPPrefixLen, err := netutils.GetBitLen(values.APIServerProxy.APIServerClusterIP)
 		if err != nil {
 			return err
 		}
 
-		if err := envoyFilterSpecTemplate.Execute(&envoyFilterSpec, envoyFilterTemplateValues{
+		if err := envoyFilterAPIServerProxyTemplate.Execute(&envoyFilterAPIServerProxy, envoyFilterAPIServerProxyTemplateValues{
 			APIServerProxy:              values.APIServerProxy,
 			IngressGatewayLabels:        values.IstioIngressGateway.Labels,
 			Name:                        envoyFilter.Name,
 			Namespace:                   envoyFilter.Namespace,
+			OwnerRefNamespace:           s.namespace,
 			Host:                        hostName,
 			Port:                        kubeapiserverconstants.Port,
 			MutualTLSHost:               mTLSHostName,
 			APIServerClusterIPPrefixLen: apiServerClusterIPPrefixLen,
-			IstioTLSTermination:         features.DefaultFeatureGate.Enabled(features.IstioTLSTermination),
 		}); err != nil {
 			return err
 		}
 
 		filename := fmt.Sprintf("envoyfilter__%s__%s.yaml", envoyFilter.Namespace, envoyFilter.Name)
-		registry := managedresources.NewRegistry(kubernetes.SeedScheme, kubernetes.SeedCodec, kubernetes.SeedSerializer)
-		registry.AddSerialized(filename, envoyFilterSpec.Bytes())
+		registry.AddSerialized(filename, envoyFilterAPIServerProxy.Bytes())
+	}
 
+	if features.DefaultFeatureGate.Enabled(features.IstioTLSTermination) {
+		envoyFilter := s.emptyEnvoyFilterIstioTLSTermination()
+
+		if err := envoyFilterIstioTLSTerminationTemplate.Execute(&envoyFilterIstioTLSTermination, envoyFilterIstioTLSTerminationTemplateValues{
+			IngressGatewayLabels: values.IstioIngressGateway.Labels,
+			Name:                 envoyFilter.Name,
+			Namespace:            envoyFilter.Namespace,
+			Port:                 kubeapiserverconstants.Port,
+			MutualTLSHost:        mTLSHostName,
+		}); err != nil {
+			return err
+		}
+
+		filename := fmt.Sprintf("envoyfilter__%s__%s.yaml", envoyFilter.Namespace, envoyFilter.Name)
+		registry.AddSerialized(filename, envoyFilterIstioTLSTermination.Bytes())
+	}
+
+	if values.APIServerProxy != nil || features.DefaultFeatureGate.Enabled(features.IstioTLSTermination) {
 		serializedObjects, err := registry.SerializedObjects()
 		if err != nil {
 			return err
@@ -169,14 +206,11 @@ func (s *sni) Deploy(ctx context.Context) error {
 		return err
 	}
 
-	var destinationMutualMutateFn func() error
-	destinationMutualMutateFn = istio.DestinationRuleWithLocalityPreference(mutualDestinationRule, getLabels(), mTLSHostName)
 	if features.DefaultFeatureGate.Enabled(features.IstioTLSTermination) {
-		destinationMutualMutateFn = istio.DestinationRuleWithLocalityPreferenceAndTLSTermination(mutualDestinationRule, getLabels(), mTLSHostName, s.valuesFunc().Hosts[0], s.namespace+apiserver.IstioCASecretSuffix, istioapinetworkingv1beta1.ClientTLSSettings_MUTUAL)
-	}
-
-	if _, err := controllerutils.GetAndCreateOrMergePatch(ctx, s.client, mutualDestinationRule, destinationMutualMutateFn); err != nil {
-		return err
+		destinationMutualMutateFn := istio.DestinationRuleWithLocalityPreferenceAndTLSTermination(mutualDestinationRule, getLabels(), mTLSHostName, s.valuesFunc().Hosts[0], s.namespace+apiserver.IstioCASecretSuffix, istioapinetworkingv1beta1.ClientTLSSettings_MUTUAL)
+		if _, err := controllerutils.GetAndCreateOrMergePatch(ctx, s.client, mutualDestinationRule, destinationMutualMutateFn); err != nil {
+			return err
+		}
 	}
 
 	var gatewayMutateFn func() error
@@ -212,7 +246,8 @@ func (s *sni) Destroy(ctx context.Context) error {
 		s.client,
 		s.emptyDestinationRule(),
 		s.emptyMutualDestinationRule(),
-		s.emptyEnvoyFilter(),
+		s.emptyEnvoyFilterAPIServerProxy(),
+		s.emptyEnvoyFilterIstioTLSTermination(),
 		s.emptyGateway(),
 		s.emptyVirtualService(),
 	)
@@ -229,8 +264,12 @@ func (s *sni) emptyMutualDestinationRule() *istionetworkingv1beta1.DestinationRu
 	return &istionetworkingv1beta1.DestinationRule{ObjectMeta: metav1.ObjectMeta{Name: s.name + "-mutual", Namespace: s.namespace}}
 }
 
-func (s *sni) emptyEnvoyFilter() *istionetworkingv1alpha3.EnvoyFilter {
-	return &istionetworkingv1alpha3.EnvoyFilter{ObjectMeta: metav1.ObjectMeta{Name: s.namespace, Namespace: s.valuesFunc().IstioIngressGateway.Namespace}}
+func (s *sni) emptyEnvoyFilterAPIServerProxy() *istionetworkingv1alpha3.EnvoyFilter {
+	return &istionetworkingv1alpha3.EnvoyFilter{ObjectMeta: metav1.ObjectMeta{Name: s.namespace + "-apiserver-proxy", Namespace: s.valuesFunc().IstioIngressGateway.Namespace}}
+}
+
+func (s *sni) emptyEnvoyFilterIstioTLSTermination() *istionetworkingv1alpha3.EnvoyFilter {
+	return &istionetworkingv1alpha3.EnvoyFilter{ObjectMeta: metav1.ObjectMeta{Name: s.namespace + "-istio-tls-termination", Namespace: s.valuesFunc().IstioIngressGateway.Namespace}}
 }
 
 func (s *sni) emptyGateway() *istionetworkingv1beta1.Gateway {
