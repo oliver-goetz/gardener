@@ -31,9 +31,9 @@ import (
 
 const (
 	// IstioCASecretSuffix is the suffix for the Istio CA secret.
-	IstioCASecretSuffix = "-kube-apiserver-ca"
+	IstioCASecretSuffix = "-kube-apiserver-ca" // #nosec G101 -- No credential.
 	// IstioTLSSecretSuffix is the suffix for the Istio TLS secret.
-	IstioTLSSecretSuffix = "-kube-apiserver-tls"
+	IstioTLSSecretSuffix = "-kube-apiserver-tls" // #nosec G101 -- No credential.
 	// SecretStaticTokenName is a constant for the name of the static-token secret.
 	SecretStaticTokenName = "kube-apiserver-static-token" // #nosec G101 -- No credential.
 
