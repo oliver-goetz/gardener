@@ -246,8 +246,6 @@ func (s *sni) Destroy(ctx context.Context) error {
 		s.client,
 		s.emptyDestinationRule(),
 		s.emptyMutualDestinationRule(),
-		s.emptyEnvoyFilterAPIServerProxy(),
-		s.emptyEnvoyFilterIstioTLSTermination(),
 		s.emptyGateway(),
 		s.emptyVirtualService(),
 	)
