@@ -17,13 +17,15 @@ import (
 	clientcmdv1 "k8s.io/client-go/tools/clientcmd/api/v1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
+	resourcesv1alpha1 "github.com/gardener/gardener/pkg/apis/resources/v1alpha1"
+	"github.com/gardener/gardener/pkg/client/kubernetes"
 	"github.com/gardener/gardener/pkg/component/apiserver"
 	vpnseedserver "github.com/gardener/gardener/pkg/component/networking/vpn/seedserver"
 	kubernetesutils "github.com/gardener/gardener/pkg/utils/kubernetes"
+	"github.com/gardener/gardener/pkg/utils/managedresources"
 	secretsutils "github.com/gardener/gardener/pkg/utils/secrets"
 	secretsmanager "github.com/gardener/gardener/pkg/utils/secrets/manager"
 	versionutils "github.com/gardener/gardener/pkg/utils/version"
@@ -36,6 +38,8 @@ const (
 	IstioTLSSecretSuffix = "-kube-apiserver-tls" // #nosec G101 -- No credential.
 	// SecretStaticTokenName is a constant for the name of the static-token secret.
 	SecretStaticTokenName = "kube-apiserver-static-token" // #nosec G101 -- No credential.
+
+	managedResourceNameIstioTLSSecrets = "istio-tls-secrets" // #nosec G101 -- No credential.
 
 	secretOIDCCABundleNamePrefix   = "kube-apiserver-oidc-cabundle" // #nosec G101 -- No credential.
 	secretOIDCCABundleDataKeyCaCrt = "ca.crt"
@@ -320,44 +324,39 @@ func (k *kubeAPIServer) emptyIstioTLSSecret() *corev1.Secret {
 	}
 }
 
+func (k *kubeAPIServer) emptyManagedResourceIstioTLSSecrets() *resourcesv1alpha1.ManagedResource {
+	return &resourcesv1alpha1.ManagedResource{ObjectMeta: metav1.ObjectMeta{Name: managedResourceNameIstioTLSSecrets, Namespace: k.namespace}}
+}
+
 func (k *kubeAPIServer) reconcileIstioTLSSecrets(ctx context.Context) error {
 	secretCA, _ := k.secretsManager.Get(v1beta1constants.SecretNameCACluster)
 	secretCAClient, _ := k.secretsManager.Get(v1beta1constants.SecretNameCAClient)
 	secretCAFrontProxy, _ := k.secretsManager.Get(v1beta1constants.SecretNameCAFrontProxy, secretsmanager.Current)
 	secretServer, _ := k.secretsManager.Get(secretNameServerCert, secretsmanager.Current)
 
+	registry := managedresources.NewRegistry(kubernetes.SeedScheme, kubernetes.SeedCodec, kubernetes.SeedSerializer)
+
 	istioTLSSecret := k.emptyIstioTLSSecret()
-	if _, err := controllerutil.CreateOrUpdate(
-		ctx,
-		k.client.Client(),
-		istioTLSSecret,
-		func() error {
-			istioTLSSecret.Data = map[string][]byte{
-				"cacert": secretCAClient.Data[secretsutils.DataKeyCertificateBundle],
-				"key":    secretServer.Data[secretsutils.DataKeyPrivateKey],
-				"cert":   secretServer.Data[secretsutils.DataKeyCertificate],
-			}
-			return nil
-		},
-	); err != nil {
-		return fmt.Errorf("failed to create or update secret %s in namespace %s: %w", istioTLSSecret.Name, istioTLSSecret.Namespace, err)
+	istioTLSSecret.Data = map[string][]byte{
+		"cacert": secretCAClient.Data[secretsutils.DataKeyCertificateBundle],
+		"key":    secretServer.Data[secretsutils.DataKeyPrivateKey],
+		"cert":   secretServer.Data[secretsutils.DataKeyCertificate],
 	}
 
 	istioCASecret := k.emptyIstioCASecret()
-	if _, err := controllerutil.CreateOrUpdate(
-		ctx,
-		k.client.Client(),
-		istioCASecret,
-		func() error {
-			istioCASecret.Data = map[string][]byte{
-				"cacert": secretCA.Data[secretsutils.DataKeyCertificateBundle],
-				"key":    secretCAFrontProxy.Data[secretsutils.DataKeyPrivateKeyCA],
-				"cert":   secretCAFrontProxy.Data[secretsutils.DataKeyCertificateCA],
-			}
-			return nil
-		},
-	); err != nil {
-		return fmt.Errorf("failed to create or update secret %s in namespace %s: %w", istioTLSSecret.Name, istioTLSSecret.Namespace, err)
+	istioCASecret.Data = map[string][]byte{
+		"cacert": secretCA.Data[secretsutils.DataKeyCertificateBundle],
+		"key":    secretCAFrontProxy.Data[secretsutils.DataKeyPrivateKeyCA],
+		"cert":   secretCAFrontProxy.Data[secretsutils.DataKeyCertificateCA],
+	}
+
+	serializedObjects, err := registry.AddAllAndSerialize(istioTLSSecret, istioCASecret)
+	if err != nil {
+		return fmt.Errorf("failed to serialize Istio TLS secrets: %w", err)
+	}
+
+	if err := managedresources.CreateForSeed(ctx, k.client.Client(), k.namespace, managedResourceNameIstioTLSSecrets, false, serializedObjects); err != nil {
+		return fmt.Errorf("failed to create managed resource %s: %w", managedResourceNameIstioTLSSecrets, err)
 	}
 
 	return nil

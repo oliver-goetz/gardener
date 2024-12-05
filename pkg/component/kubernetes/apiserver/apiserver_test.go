@@ -1302,6 +1302,8 @@ resources:
 					},
 				})
 
+				Expect(kapi.Deploy(ctx)).To(Succeed())
+
 				expectedTlsSecret := &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{Name: namespace + "-kube-apiserver-tls", Namespace: "istio-ingress"},
 					Data: map[string][]byte{
@@ -1319,31 +1321,9 @@ resources:
 					},
 				}
 
-				actualTlsSecret := &corev1.Secret{}
-				Expect(c.Get(ctx, client.ObjectKeyFromObject(expectedTlsSecret), actualTlsSecret)).To(BeNotFoundError())
-				actualCaSecret := &corev1.Secret{}
-				Expect(c.Get(ctx, client.ObjectKeyFromObject(expectedCaSecret), actualCaSecret)).To(BeNotFoundError())
-
-				Expect(kapi.Deploy(ctx)).To(Succeed())
-
-				Expect(c.Get(ctx, client.ObjectKeyFromObject(expectedTlsSecret), actualTlsSecret)).To(Succeed())
-				Expect(actualTlsSecret).To(DeepEqual(&corev1.Secret{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:            expectedTlsSecret.Name,
-						Namespace:       expectedTlsSecret.Namespace,
-						ResourceVersion: "1",
-					},
-					Data: expectedTlsSecret.Data,
-				}))
-				Expect(c.Get(ctx, client.ObjectKeyFromObject(expectedCaSecret), actualCaSecret)).To(Succeed())
-				Expect(actualCaSecret).To(DeepEqual(&corev1.Secret{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:            expectedCaSecret.Name,
-						Namespace:       expectedCaSecret.Namespace,
-						ResourceVersion: "1",
-					},
-					Data: expectedCaSecret.Data,
-				}))
+				managedResource := &resourcesv1alpha1.ManagedResource{ObjectMeta: metav1.ObjectMeta{Name: "istio-tls-secrets", Namespace: namespace}}
+				Expect(c.Get(ctx, client.ObjectKeyFromObject(managedResource), managedResource)).To(Succeed())
+				Expect(managedResource).To(consistOf(expectedTlsSecret, expectedCaSecret))
 			})
 			It("should clean up the istio tls secrets after disabling feature gate IstioTLSTermination", func() {
 				DeferCleanup(test.WithFeatureGate(features.DefaultFeatureGate, features.IstioTLSTermination, true))

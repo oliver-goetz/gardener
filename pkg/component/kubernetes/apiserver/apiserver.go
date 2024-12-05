@@ -383,10 +383,7 @@ func (k *kubeAPIServer) Deploy(ctx context.Context) error {
 			return err
 		}
 	} else {
-		if err := kubernetesutils.DeleteObjects(ctx, k.client.Client(),
-			k.emptyIstioTLSSecret(),
-			k.emptyIstioCASecret(),
-		); err != nil {
+		if err := managedresources.DeleteForSeed(ctx, k.client.Client(), k.namespace, managedResourceNameIstioTLSSecrets); err != nil {
 			return err
 		}
 	}
@@ -482,8 +479,7 @@ func (k *kubeAPIServer) Destroy(ctx context.Context) error {
 		k.emptyRoleBindingHAVPN(),
 		k.emptyServiceMonitor(),
 		k.emptyPrometheusRule(),
-		k.emptyIstioTLSSecret(),
-		k.emptyIstioCASecret(),
+		k.emptyManagedResourceIstioTLSSecrets(),
 	)
 }
 
