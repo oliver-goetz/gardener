@@ -6,6 +6,7 @@ package apiserverproxy_test
 
 import (
 	"context"
+	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -46,9 +47,10 @@ var _ = Describe("APIServerProxy", func() {
 		managedResource       *resourcesv1alpha1.ManagedResource
 		managedResourceSecret *corev1.Secret
 
-		values             Values
-		component          Interface
-		advertiseIPAddress string
+		values               Values
+		component            Interface
+		advertiseIPAddress   string
+		xGardenerDestination string
 
 		managedResourceName = "shoot-core-apiserver-proxy"
 		namespace           = "shoot--internal--internal"
@@ -185,11 +187,13 @@ var _ = Describe("APIServerProxy", func() {
 
 	BeforeEach(func() {
 		advertiseIPAddress = "10.2.170.21"
+		xGardenerDestination = "outbound|443||kube-apiserver.shoot--internal--internal.svc.cluster.local"
 		values = Values{
 			Image:               image,
 			SidecarImage:        sidecarImage,
 			ProxySeedServerHost: proxySeedServerHost,
 			DNSLookupFamily:     "V4_ONLY",
+			IstioTLSTermination: false,
 		}
 	})
 
@@ -219,7 +223,7 @@ var _ = Describe("APIServerProxy", func() {
 	})
 
 	Describe("#Deploy", func() {
-		test := func(hash string) {
+		testFunc := func(hash string) {
 			By("Verify that managed resource does not exist yet")
 			Expect(c.Get(ctx, client.ObjectKeyFromObject(managedResource), managedResource)).To(BeNotFoundError())
 
@@ -248,7 +252,7 @@ var _ = Describe("APIServerProxy", func() {
 			utilruntime.Must(references.InjectAnnotations(expectedMr))
 			Expect(managedResource).To(DeepEqual(expectedMr))
 			Expect(managedResource).To(consistOf(
-				getConfigYAML(hash, values.DNSLookupFamily, advertiseIPAddress),
+				getConfigYAML(hash, values.DNSLookupFamily, advertiseIPAddress, xGardenerDestination),
 				getDaemonSet(hash, advertiseIPAddress),
 				service,
 				serviceAccount,
@@ -268,7 +272,7 @@ var _ = Describe("APIServerProxy", func() {
 
 		Context("IPv4", func() {
 			It("should deploy the managed resource successfully", func() {
-				test("d383e1bb")
+				testFunc("d383e1bb")
 			})
 		})
 
@@ -279,7 +283,18 @@ var _ = Describe("APIServerProxy", func() {
 			})
 
 			It("should deploy the managed resource successfully", func() {
-				test("331c4e9c")
+				testFunc("331c4e9c")
+			})
+		})
+
+		Context("IstioTLSTermination", func() {
+			BeforeEach(func() {
+				values.IstioTLSTermination = true
+				xGardenerDestination = fmt.Sprintf("%s--kube-apiserver-socket", namespace)
+			})
+
+			It("should deploy the managed resource successfully", func() {
+				testFunc("c4d122ec")
 			})
 		})
 	})
@@ -394,7 +409,7 @@ var _ = Describe("APIServerProxy", func() {
 	})
 })
 
-func getConfigYAML(hash string, dnsLookUpFamily string, advertiseIPAddress string) *corev1.ConfigMap {
+func getConfigYAML(hash, dnsLookUpFamily, advertiseIPAddress, xGardenerDestination string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "apiserver-proxy-config-" + hash,
@@ -468,7 +483,7 @@ static_resources:
             headers_to_add:
             - header:
                 key: X-Gardener-Destination
-                value: "outbound|443||kube-apiserver.shoot--internal--internal.svc.cluster.local"
+                value: "` + xGardenerDestination + `"
           access_log:
           - name: envoy.access_loggers.stdout
             typed_config:
