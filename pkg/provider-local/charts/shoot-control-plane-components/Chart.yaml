@@ -1,0 +1,4 @@
+apiVersion: v1
+description: A Helm chart for shoot control plane compoonents that should be installed to the shoot control plane
+name: shoot-control-plane-components
+version: 0.1.0

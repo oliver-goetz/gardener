@@ -93,6 +93,8 @@ func NewIstio(
 	// In case the cluster's API server should be exposed via ingress domain for the dashboard terminal scenario,
 	// istio ingress gateway needs to be able to directly forward traffic to the runtime API server.
 	policyLabels[v1beta1constants.LabelNetworkPolicyToRuntimeAPIServer] = v1beta1constants.LabelNetworkPolicyAllowed
+	// TODO: Use for Seed only
+	policyLabels[gardenerutils.NetworkPolicyLabel(v1beta1constants.LabelNetworkPolicyShootNamespaceAlias+"-talos-csr-signer", 50001)] = v1beta1constants.LabelNetworkPolicyAllowed
 
 	enforceSpreadAcrossHosts, err := ShouldEnforceSpreadAcrossHosts(ctx, cl, zones)
 	if err != nil {

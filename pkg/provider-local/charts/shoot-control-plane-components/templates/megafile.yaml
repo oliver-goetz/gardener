@@ -1,0 +1,138 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: talos-csr-signer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: talos-csr-signer
+spec:
+  selector:
+    matchLabels:
+      app: talos-csr-signer
+  template:
+    metadata:
+      labels:
+        app: talos-csr-signer
+    spec:
+      containers:
+      - name: talos-csr-signer
+        image: ghcr.io/clastix/talos-csr-signer:latest
+        imagePullPolicy: Always
+        ports:
+        - name: grpc
+          containerPort: 50001
+          protocol: TCP
+          hostPort: 50001
+        env:
+        - name: TALOS_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: talos
+              key: token
+        volumeMounts:
+        - name: ca
+          mountPath: /etc/talos-ca/tls.crt
+          subPath: ca.crt
+          readOnly: true
+        - name: ca
+          mountPath: /etc/talos-ca/tls.key
+          subPath: ca.key
+          readOnly: true
+        - name: tls-cert
+          mountPath: /etc/talos-server-crt
+          readOnly: true
+      volumes:
+      - name: ca
+        secret:
+          secretName: ca
+      - name: tls-cert
+        secret:
+          secretName: talos-tls-cert
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: talos-csr-signer
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    networking.istio.io/exportTo: '*'
+    networking.resources.gardener.cloud/namespace-selectors: '[{"matchLabels":{"gardener.cloud/role":"istio-ingress"}},{"matchExpressions":[{"key":"handler.exposureclass.gardener.cloud/name","operator":"Exists"}]},{"matchLabels":{"gardener.cloud/role":"extension"}}]'
+    networking.resources.gardener.cloud/pod-label-selector-namespace-alias: all-shoots
+  labels:
+    app: talos-csr-signer
+spec:
+  type: ClusterIP
+  ports:
+  - name: grpc
+    port: 50001
+    targetPort: 50001
+    protocol: TCP
+  selector:
+    app: talos-csr-signer
+---
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: talos-csr-signer-gateway
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: istio-ingressgateway
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 50001
+      name: grpc
+      protocol: TLS
+    hosts:
+    - '*'
+    # - api.local-talos.local.internal.local.gardener.cloud
+    # - api.local-talos.local.external.local.gardener.cloud
+    tls:
+      mode: PASSTHROUGH
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: talos-csr-signer-vs
+  namespace: {{ .Release.Namespace }}
+spec:
+  exportTo:
+  - '*'
+  hosts:
+  - '*'
+  # - api.local-talos.local.internal.local.gardener.cloud
+  # - api.local-talos.local.external.local.gardener.cloud
+  gateways:
+  - talos-csr-signer-gateway
+  tls:
+  - match:
+    - port: 50001
+      sniHosts:
+        - '*'
+        # - api.local-talos.local.internal.local.gardener.cloud
+        # - api.local-talos.local.external.local.gardener.cloud
+    route:
+    - destination:
+        host: talos-csr-signer.{{ .Release.Namespace }}.svc.cluster.local
+        port:
+          number: 50001
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: talos-csr-signer-dr
+  namespace: {{ .Release.Namespace }}
+spec:
+  exportTo:
+  - '*'
+  host: talos-csr-signer.{{ .Release.Namespace }}.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 5000
+        tcpKeepalive:
+          time: 7200s
+          interval: 75s
+    tls:
+      mode: DISABLE

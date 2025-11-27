@@ -21,4 +21,7 @@ var (
 	ChartShootSystemComponents embed.FS
 	// ChartPathShootSystemComponents is the path to the shoot-system-components chart.
 	ChartPathShootSystemComponents = filepath.Join("shoot-system-components")
+
+	ChartShootControlPlaneComponents     embed.FS
+	ChartPathShootControlPlaneComponents = filepath.Join("shoot-control-plane-components")
 )

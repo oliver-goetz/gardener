@@ -1,0 +1,155 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: talos-machine
+  namespace: shoot--local--local-talos
+  annotations:
+    cni.projectcalico.org/ipv4pools: '["shoot-machine-pods-shoot--local--local-talos-ipv4"]'
+  labels:
+    networking.gardener.cloud/to-dns: allowed
+    networking.gardener.cloud/to-istio-ingressgateway: allowed
+    networking.gardener.cloud/to-private-networks: allowed
+    networking.gardener.cloud/to-public-networks: allowed
+    networking.gardener.cloud/to-runtime-apiserver: allowed
+    networking.resources.gardener.cloud/to-all-istio-ingresses-istio-ingressgateway-tcp-9443: allowed
+    networking.resources.gardener.cloud/to-all-istio-ingresses-istio-ingressgateway-tcp-50001: allowed
+    networking.resources.gardener.cloud/to-gardener-extension-provider-local-coredns-coredns-tcp-9053: allowed
+    networking.resources.gardener.cloud/to-gardener-extension-provider-local-coredns-coredns-udp-9053: allowed
+    networking.resources.gardener.cloud/to-kube-apiserver-tcp-443: allowed
+spec:
+  dnsConfig:
+    nameservers:
+    - 10.2.171.253
+    options:
+    - name: ndots
+      value: "5"
+    searches:
+    - shoot--local--local-talos.svc.cluster.local
+    - svc.cluster.local
+    - cluster.local
+  dnsPolicy: None
+  containers:
+  - name: talos
+    env:
+      - name: PLATFORM
+        value: container
+    image: ghcr.io/siderolabs/talos:v1.11.5
+    ports:
+    - containerPort: 50000
+      name: talos-api
+      protocol: TCP
+    - containerPort: 6443
+      name: k8s-api
+      protocol: TCP
+    securityContext:
+      privileged: true
+      readOnlyRootFilesystem: true
+      seccompProfile:
+          type: Unconfined
+    volumeMounts:
+      - mountPath: /run
+        name: run
+      - mountPath: /system
+        name: system
+      - mountPath: /tmp
+        name: tmp
+      - mountPath: /system/state
+        name: system-state
+      - mountPath: /var
+        name: var
+      - mountPath: /etc/cni
+        name: etc-cni
+      - mountPath: /etc/kubernetes
+        name: etc-kubernetes
+      - mountPath: /usr/libexec/kubernetes
+        name: usr-libexec-kubernetes
+  volumes:
+    - emptyDir: {}
+      name: run
+    - emptyDir: {}
+      name: system
+    - emptyDir: {}
+      name: tmp
+    - persistentVolumeClaim:
+        claimName: talos-system-state
+      name: system-state
+    - persistentVolumeClaim:
+        claimName: talos-var
+      name: var
+    - persistentVolumeClaim:
+        claimName: talos-etc-cni
+      name: etc-cni
+    - persistentVolumeClaim:
+        claimName: talos-etc-kubernetes
+      name: etc-kubernetes
+    - persistentVolumeClaim:
+        claimName: talos-usr-libexec-kubernetes
+      name: usr-libexec-kubernetes
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: talos-system-state
+  namespace: shoot--local--local-talos
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: talos-var
+  namespace: shoot--local--local-talos
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: talos-etc-cni
+  namespace: shoot--local--local-talos
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: talos-etc-kubernetes
+  namespace: shoot--local--local-talos
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: talos-usr-libexec-kubernetes
+  namespace: shoot--local--local-talos
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: machine.sapcloud.io/v1alpha1
+kind: Machine
+metadata:
+  name: shoot--local--local-talos-talos-machine
+  namespace: shoot--local--local-talos
+  labels:
+    node: talos-machine

@@ -54,6 +54,13 @@ const (
 	nodePortTunnelIstioIngressGatewayZone2 int32 = 32135
 )
 
+const (
+	nodePortTalosIngressGateway           int32 = 30501
+	nodePortTalosIstioIngressGatewayZone0 int32 = 30502
+	nodePortTalosIstioIngressGatewayZone1 int32 = 30503
+	nodePortTalosIstioIngressGatewayZone2 int32 = 30504
+)
+
 // Reconciler is a reconciler for Service resources.
 type Reconciler struct {
 	Client    client.Client
@@ -92,6 +99,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 		// TODO(hown3d): Drop with RemoveHTTPProxyLegacyPort feature gate
 		nodePortTunnel    int32
 		nodePortHTTPProxy int32
+		nodePortTalos     int32
 		isBastion         = service.Labels["app"] == "bastion"
 		patch             = client.MergeFrom(service.DeepCopy())
 	)
@@ -101,6 +109,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 		nodePort = nodePortIstioIngressGateway
 		nodePortTunnel = nodePortTunnelIstioIngressGateway
 		nodePortHTTPProxy = nodePortHTTPProxyIstioIngressGateway
+		nodePortTalos = nodePortTalosIngressGateway
 		// Internal IPs of the nodes are required to reach the virtual garden from inside the kind cluster.
 		// If there is a virtual-garden-istio-ingress istio-ingressgateway created by operator, the IPs should be added to its LB service (see `keyVirtualGardenIstioIngressGateway` case).
 		// If there is no such ingress, the IPs should be added to the LB service of istio-ingress istio-ingress-gateway (this case).
@@ -122,16 +131,19 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 		nodePort = nodePortIstioIngressGatewayZone0
 		nodePortTunnel = nodePortTunnelIstioIngressGatewayZone0
 		nodePortHTTPProxy = nodePortHTTPProxyIstioIngressGatewayZone0
+		nodePortTalos = nodePortTalosIstioIngressGatewayZone0
 		ips = append(ips, r.Zone0IP)
 	case keyIstioIngressGatewayZone1:
 		nodePort = nodePortIstioIngressGatewayZone1
 		nodePortTunnel = nodePortTunnelIstioIngressGatewayZone1
 		nodePortHTTPProxy = nodePortHTTPProxyIstioIngressGatewayZone1
+		nodePortTalos = nodePortTalosIstioIngressGatewayZone1
 		ips = append(ips, r.Zone1IP)
 	case keyIstioIngressGatewayZone2:
 		nodePort = nodePortIstioIngressGatewayZone2
 		nodePortTunnel = nodePortTunnelIstioIngressGatewayZone2
 		nodePortHTTPProxy = nodePortHTTPProxyIstioIngressGatewayZone2
+		nodePortTalos = nodePortTalosIstioIngressGatewayZone2
 		ips = append(ips, r.Zone2IP)
 	case keyVirtualGardenIstioIngressGateway:
 		nodePort = nodePortVirtualGardenKubeAPIServer
@@ -166,6 +178,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 		}
 		if servicePort.Name == "http-proxy" {
 			service.Spec.Ports[i].NodePort = nodePortHTTPProxy
+		}
+		if servicePort.Name == "talos" {
+			service.Spec.Ports[i].NodePort = nodePortTalos
 		}
 	}
 
