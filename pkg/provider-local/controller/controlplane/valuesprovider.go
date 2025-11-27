@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -20,12 +21,11 @@ import (
 	extensionscontroller "github.com/gardener/gardener/extensions/pkg/controller"
 	"github.com/gardener/gardener/extensions/pkg/controller/controlplane/genericactuator"
 	extensionssecretsmanager "github.com/gardener/gardener/extensions/pkg/util/secret/manager"
-	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
 	extensionsv1alpha1 "github.com/gardener/gardener/pkg/apis/extensions/v1alpha1"
-	"github.com/gardener/gardener/pkg/component/kubernetes/apiserver"
 	"github.com/gardener/gardener/pkg/provider-local/charts"
 	localimagevector "github.com/gardener/gardener/pkg/provider-local/imagevector"
 	"github.com/gardener/gardener/pkg/provider-local/local"
+	"github.com/gardener/gardener/pkg/utils"
 	"github.com/gardener/gardener/pkg/utils/chart"
 	kubernetesutils "github.com/gardener/gardener/pkg/utils/kubernetes"
 	"github.com/gardener/gardener/pkg/utils/secrets"
@@ -126,10 +126,21 @@ func (vp *valuesProvider) GetControlPlaneShootChartValues(
 
 func (vp *valuesProvider) GetControlPlaneChartValues(ctx context.Context, cp *extensionsv1alpha1.ControlPlane, cluster *extensionscontroller.Cluster, secretsReader secretsmanager.Reader, checksums map[string]string, scaledDown bool) (map[string]any, error) {
 	const talosSecretName = "talos"
-
 	values := map[string]any{}
 
 	var talosSecret corev1.Secret
+	if err := vp.client.Get(ctx, client.ObjectKey{Name: talosSecretName, Namespace: cp.Namespace}, &talosSecret); err == nil {
+		values["talosToken"] = string(talosSecret.Data["talosToken"])
+	} else if !errors.IsNotFound(err) {
+		v, err := vp.createValues(ctx, cluster)
+		if err != nil {
+			return nil, fmt.Errorf("unable to create talos bootstrap values: %w", err)
+		}
+		values = utils.MergeMaps(values, v)
+	} else {
+		return nil, fmt.Errorf("unable to get talos bootstrap")
+	}
+
 	if err := vp.client.Get(ctx, client.ObjectKey{Name: talosSecretName, Namespace: cp.Namespace}, &talosSecret); err != nil {
 		if errors.IsNotFound(err) {
 			values, err = vp.createValues(ctx, cluster)
@@ -140,8 +151,6 @@ func (vp *valuesProvider) GetControlPlaneChartValues(ctx context.Context, cp *ex
 			return nil, fmt.Errorf("unable to get talos bootstrap secret: %w", err)
 		}
 	}
-
-	// TODO!!!!!!!!
 
 	return values, nil
 }
@@ -194,7 +203,15 @@ func (vp *valuesProvider) createValues(ctx context.Context, cluster *extensionsc
 
 	cert, ca, dir, err := secrets.SelfGenerateTLSServerCertificate("talos",
 		[]string{"localhost", internalDomain, externalDomain}, ips)
+	if err != nil {
+		return nil, fmt.Errorf("unable to generate TLS certificate for talos API server: %w", err)
+	}
 
+	values["talosCert"] = cert.CertificatePEM
+	values["talosKey"] = cert.PrivateKeyPEM
+	values["talosCA"] = ca.CertificatePEM
+	values["talosCAKey"] = ca.PrivateKeyPEM
+	defer os.RemoveAll(dir)
 	return values, nil
 }
 

@@ -38,16 +38,18 @@ spec:
           mountPath: /etc/talos-ca/tls.key
           subPath: ca.key
           readOnly: true
-        - name: tls-cert
-          mountPath: /etc/talos-server-crt
+        - name: ca
+          mountPath: /etc/talos-server-crt/tls.crt
           readOnly: true
+          subPath: tls.crt
+        - name: ca
+          mountPath: /etc/talos-server-crt/tls.key
+          readOnly: true
+          subPath: tls.key
       volumes:
       - name: ca
         secret:
-          secretName: ca
-      - name: tls-cert
-        secret:
-          secretName: talos-tls-cert
+          secretName: talos
 ---
 apiVersion: v1
 kind: Service
