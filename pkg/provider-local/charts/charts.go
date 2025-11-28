@@ -22,6 +22,7 @@ var (
 	// ChartPathShootSystemComponents is the path to the shoot-system-components chart.
 	ChartPathShootSystemComponents = filepath.Join("shoot-system-components")
 
+	//go:embed shoot-control-plane-components
 	ChartShootControlPlaneComponents     embed.FS
 	ChartPathShootControlPlaneComponents = filepath.Join("shoot-control-plane-components")
 )

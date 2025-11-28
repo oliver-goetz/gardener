@@ -130,28 +130,20 @@ func (vp *valuesProvider) GetControlPlaneChartValues(ctx context.Context, cp *ex
 
 	var talosSecret corev1.Secret
 	if err := vp.client.Get(ctx, client.ObjectKey{Name: talosSecretName, Namespace: cp.Namespace}, &talosSecret); err == nil {
-		values["talosToken"] = string(talosSecret.Data["talosToken"])
-	} else if !errors.IsNotFound(err) {
+		values["talosToken"] = string(talosSecret.Data["token"])
+		values["talosCert"] = string(talosSecret.Data["tls.crt"])
+		values["talosKey"] = string(talosSecret.Data["tls.key"])
+		values["talosCA"] = string(talosSecret.Data["ca.crt"])
+		values["talosCAKey"] = string(talosSecret.Data["ca.key"])
+	} else if errors.IsNotFound(err) {
 		v, err := vp.createValues(ctx, cluster)
 		if err != nil {
-			return nil, fmt.Errorf("unable to create talos bootstrap values: %w", err)
+			return nil, fmt.Errorf("unable to create talos control plane chart values: %w", err)
 		}
 		values = utils.MergeMaps(values, v)
 	} else {
-		return nil, fmt.Errorf("unable to get talos bootstrap")
+		return nil, fmt.Errorf("unable to get talos control plane chart values: %w", err)
 	}
-
-	if err := vp.client.Get(ctx, client.ObjectKey{Name: talosSecretName, Namespace: cp.Namespace}, &talosSecret); err != nil {
-		if errors.IsNotFound(err) {
-			values, err = vp.createValues(ctx, cluster)
-			if err != nil {
-				return nil, fmt.Errorf("unable to create talos bootstrap values: %w", err)
-			}
-		} else {
-			return nil, fmt.Errorf("unable to get talos bootstrap secret: %w", err)
-		}
-	}
-
 	return values, nil
 }
 
@@ -163,7 +155,7 @@ func (vp *valuesProvider) createValues(ctx context.Context, cluster *extensionsc
 		return nil, err
 	}
 
-	values["talosToken"] = talosToken
+	values["talosToken"] = []byte(talosToken)
 
 	var (
 		internalDomain string
