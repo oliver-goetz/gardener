@@ -1,0 +1,6 @@
+*
+
+!.gitignore
+!garden.yaml.tmpl
+!secret-dns.yaml.tmpl
+!secret-backup.yaml.tmpl

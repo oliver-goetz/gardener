@@ -344,6 +344,7 @@ for node in $nodes; do
 done
 
 if [[ "$KUBECONFIG" != "$PATH_KUBECONFIG" ]]; then
+  cp "$KUBECONFIG" "$(dirname "$0")/../dev-setup/kubeconfigs/runtime/kubeconfig"
   cp "$KUBECONFIG" "$PATH_KUBECONFIG"
   if [[ "$PATH_KUBECONFIG" == *"dev-setup/gardenlet/components/kubeconfigs/seed-local2/kubeconfig" ]]; then
     sed "s/127\.0\.0\.1:[0-9]\+/gardener-local-multi-node2-control-plane:6443/g" "$PATH_KUBECONFIG" > "${PATH_KUBECONFIG}-gardener-operator"

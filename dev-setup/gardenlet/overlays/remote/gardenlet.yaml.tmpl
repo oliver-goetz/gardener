@@ -1,0 +1,83 @@
+apiVersion: seedmanagement.gardener.cloud/v1alpha1
+kind: Gardenlet
+metadata:
+  name: remote
+  namespace: garden
+spec:
+  deployment:
+    helm:
+      ociRepository:
+        pullSecretRef:
+          name: gardener-images
+  config:
+    seedConfig:
+      spec:
+        # Specify all fields when defining 'backup' so that they correctly overwrite the corresponding fields in example/gardener-local/gardenlet/values.yaml
+        backup: ~
+        provider:
+          # Automatically set when using a Gardener shoot
+          region: ""
+          # Automatically set when using a Gardener shoot
+          type: ""
+          # Enter zones of your seed
+          zones: []
+        dns:
+          provider:
+            # Automatically set when using a Gardener shoot
+            type: ""
+            secretRef:
+              name: internal-domain-internal-remote-gardener-cloud
+              namespace: garden
+          internal:
+            credentialsRef:
+              apiVersion: v1
+              kind: Secret
+              name: internal-domain-internal-remote-gardener-cloud
+              namespace: garden
+            # Automatically set when using a Gardener shoot
+            type: ""
+            # Enter your internal domain for shoot kube-apiservers
+            domain: ""
+          defaults:
+          - credentialsRef:
+              apiVersion: v1
+              kind: Secret
+              name: default-domain-external-remote-gardener-cloud
+              namespace: garden
+            # Automatically set when using a Gardener shoot
+            type: ""
+            # Enter your default domain for shoot kube-apiservers
+            domain: ""
+        # Specify extensions if you want to use any
+        extensions: ~
+        ingress:
+          controller:
+            kind: nginx
+          # Enter ingress domain of your seed
+          domain: ""
+        networks:
+          blockCIDRs:
+            - 169.254.169.254/32
+          # Automatically set when using a Gardener shoot
+          pods: ""
+          # Automatically set when using a Gardener shoot
+          nodes: ""
+          # Automatically set when using a Gardener shoot
+          services: ""
+          shootDefaults:
+            pods: 100.80.0.0/12
+            services: 100.112.0.0/13
+        settings:
+          dependencyWatchdog:
+            endpoint:
+              enabled: true
+            probe:
+              enabled: true
+          excessCapacityReservation:
+            enabled: false
+          scheduling:
+            visible: true
+          verticalPodAutoscaler:
+            # If using a Gardener shoot, make sure that the shoot cluster has VPA enabled. Otherwise, enable VPA below in the seed spec.
+            # Don't enable VPA for both the shoot control plane and the seed. 2 VPA deployments acting on the same cluster cause endless VPA eviction loops.
+            enabled: false
