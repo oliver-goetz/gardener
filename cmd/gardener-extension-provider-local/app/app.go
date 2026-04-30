@@ -47,6 +47,7 @@ import (
 	localoperatingsystemconfig "github.com/gardener/gardener/pkg/provider-local/controller/operatingsystemconfig"
 	localworker "github.com/gardener/gardener/pkg/provider-local/controller/worker"
 	"github.com/gardener/gardener/pkg/provider-local/local"
+	calicoselfhostedshootwebhook "github.com/gardener/gardener/pkg/provider-local/webhook/calicoselfhostedshoot"
 	prometheuswebhook "github.com/gardener/gardener/pkg/provider-local/webhook/prometheus"
 	kubernetesutils "github.com/gardener/gardener/pkg/utils/kubernetes"
 )
@@ -163,6 +164,11 @@ func NewControllerManagerCommand(ctx context.Context) *cobra.Command {
 		Use: fmt.Sprintf("%s-controller-manager", local.Name),
 
 		RunE: func(_ *cobra.Command, _ []string) error {
+			// The calico-self-hosted-shoot webhook is only relevant for self-hosted shoots with unmanaged infrastructure.
+			if !generalOpts.SelfHostedShootCluster {
+				webhookSwitches.Disabled = append(webhookSwitches.Disabled, calicoselfhostedshootwebhook.WebhookName)
+			}
+
 			if err := aggOption.Complete(); err != nil {
 				return fmt.Errorf("error completing options: %w", err)
 			}

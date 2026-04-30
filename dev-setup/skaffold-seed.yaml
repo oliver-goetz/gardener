@@ -597,7 +597,7 @@ build:
 profiles:
   - name: dev
     activation:
-    - command: dev
+      - command: dev
     patches:
       - op: replace
         path: /build/tagPolicy/customTemplate/template
