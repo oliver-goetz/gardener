@@ -54,6 +54,10 @@ function detect_scenario() {
     export SCENARIO="${SCENARIO}-gardenadm"
   fi
 
+  if kubectl get deployments -n kube-system machine-controller-manager &>/dev/null; then
+    export SCENARIO="${SCENARIO}-managed-infra"
+  fi
+
   echo "Detected scenario: $SCENARIO"
 }
 
@@ -70,6 +74,9 @@ function skaffold_profile() {
       ;;
     multi-node-gardenadm)
       export SKAFFOLD_PROFILE="multi-node-gardenadm"
+      ;;
+    multi-node-gardenadm-managed-infra)
+      export SKAFFOLD_PROFILE="multi-node-gardenadm-managed-infra"
       ;;
     multi-node2)
       export SKAFFOLD_PROFILE="multi-node2"
