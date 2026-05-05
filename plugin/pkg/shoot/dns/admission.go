@@ -23,6 +23,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	"github.com/gardener/gardener/pkg/api/core/helper"
+	gardencorehelper "github.com/gardener/gardener/pkg/api/core/helper"
 	"github.com/gardener/gardener/pkg/apis/core"
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
 	admissioninitializer "github.com/gardener/gardener/pkg/apiserver/admission/initializer"
@@ -392,6 +393,11 @@ func (d *DNS) Validate(_ context.Context, a admission.Attributes, _ admission.Ob
 // checkPrimaryDNSProvider checks if the shoot uses a default domain and returns an error
 // if a primary provider is used at the same time.
 func checkPrimaryDNSProvider(shoot *core.Shoot, defaultDomains []string) field.ErrorList {
+	// For self-hosted-shoots it is ok to have a primary DNS provider configured even if the default domain is used.
+	if gardencorehelper.IsShootSelfHosted(shoot.Spec.Provider.Workers) {
+		return nil
+	}
+
 	dns := shoot.Spec.DNS
 	if dns == nil || dns.Domain == nil || len(dns.Providers) == 0 {
 		return nil
