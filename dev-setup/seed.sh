@@ -52,7 +52,8 @@ case "$COMMAND" in
       #  the Shoot status to indicate successful reconciliation before it attempts to deploy something. As the
       #  shoot/shoot controller is not yet activated in the shoot gardenlet, we have to manually manipulate the status
       #  here. This can be removed once the shoot/shoot controller in the shoot gardenlet has been enabled.
-      kubectl --kubeconfig "$KUBECONFIG_VIRTUAL_GARDEN_CLUSTER" -n garden patch shoot root --subresource=status --type=merge --patch='{"status":{"lastOperation":{"state":"Succeeded"},"observedGeneration":1}}'
+      generation="$(kubectl --kubeconfig="$KUBECONFIG_VIRTUAL_GARDEN_CLUSTER" -n garden get shoot root -o jsonpath='{.metadata.generation}')"
+      kubectl --kubeconfig "$KUBECONFIG_VIRTUAL_GARDEN_CLUSTER" -n garden patch shoot root --subresource=status --type=merge --patch='{"status":{"lastOperation":{"state":"Succeeded"},"observedGeneration":'"$generation"'}}'
     fi
 
     skaffold $skaffold_command \
