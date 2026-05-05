@@ -46,7 +46,7 @@ case "$COMMAND" in
       --status-check=false --platform="linux/$SYSTEM_ARCH" # deployments don't exist in virtual-garden, see https://skaffold.dev/docs/status-check/; nodes don't exist in virtual-garden, ensure skaffold use the host architecture instead of amd64, see https://skaffold.dev/docs/workflows/handling-platforms/
 
     if [[ "$SCENARIO" == "multi-node-gardenadm" ]]; then
-      cp "$KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER" "$(dirname "$0")/gardenlet/components/kubeconfigs/seed-root/kubeconfig"
+      cp "$KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER" "$(dirname "$0")/managedseed/components/kubeconfigs/seed-root/kubeconfig"
       # TODO(rfranzke): In the gardenadm (self-hosted shoot) scenario, the seed gardenlet is deployed via a
       #  ManagedSeed (that gets reconciled by the already running shoot gardenlet). The ManagedSeed controller requires
       #  the Shoot status to indicate successful reconciliation before it attempts to deploy something. As the

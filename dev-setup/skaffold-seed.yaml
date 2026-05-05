@@ -637,7 +637,7 @@ profiles:
     manifests:
       kustomize:
         paths:
-          - dev-setup/gardenlet/overlays/multi-node-gardenadm
+          - dev-setup/managedseed/overlays/multi-node-gardenadm-unmanaged-infra
     patches:
       - op: remove
         path: /build
