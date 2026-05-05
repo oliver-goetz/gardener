@@ -10,7 +10,7 @@ COMMAND="${1:-up}"
 VALID_COMMANDS=("up" "down")
 
 SCENARIO="${SCENARIO:-unmanaged-infra}"
-VALID_SCENARIOS=("unmanaged-infra" "managed-infra" "connect" "connect-kind")
+VALID_SCENARIOS=("unmanaged-infra" "managed-infra" "connect" "connect-kind" "connect-managed-infra")
 
 # For unmanaged-infra and connect scenarios, there is no cluster to detect the node platform from.
 # Default to the local machine's architecture.
@@ -35,6 +35,9 @@ garden_runtime_cluster_kubeconfig="$KUBECONFIG_RUNTIME_CLUSTER"
 if [[ "$SCENARIO" == "connect" ]]; then
   garden_runtime_cluster_kubeconfig="$KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER"
   ./hack/usage/generate-kubeconfig.sh self-hosted-shoot --docker gind-machine-0 > "$garden_runtime_cluster_kubeconfig"
+elif [[ "$SCENARIO" == "connect-managed-infra" ]]; then
+  garden_runtime_cluster_kubeconfig="$KUBECONFIG_SELFHOSTEDSHOOT_CLUSTER"
+  ./hack/usage/generate-kubeconfig.sh self-hosted-shoot >"$garden_runtime_cluster_kubeconfig"
 fi
 
 case "$COMMAND" in
