@@ -205,6 +205,7 @@ Use `go run` to execute `gardenadm` commands on your machine:
 
 ```shell
 $ export IMAGEVECTOR_OVERWRITE=$PWD/dev-setup/gardenadm/resources/generated/.imagevector-overwrite.yaml
+$ export IMAGEVECTOR_OVERWRITE_CHARTS=$PWD/dev-setup/gardenadm/resources/generated/.imagevector-overwrite-charts.yaml
 $ go run ./cmd/gardenadm bootstrap -d ./dev-setup/gardenadm/resources/generated/managed-infra
 ...
 [shoot--garden--root-control-plane-58ffc-2l6s7] Your Shoot cluster control-plane has initialized successfully!
@@ -294,7 +295,8 @@ $ KUBECONFIG=./dev-setup/kubeconfigs/virtual-garden/kubeconfig ./bin/gardenadm t
 gardenadm connect --bootstrap-token ... --ca-certificate ... https://api.virtual-garden.local.gardener.cloud
 ```
 
-Copy the full output, exec once again into one of the control-plane machines of your self-hosted shoot cluster, and paste and run the generated `gardenadm connect` command there:
+Copy the full output, exec once again into one of the control-plane machines of your self-hosted shoot cluster, and paste and run the generated `gardenadm connect` command there. 
+Remember to set the imagevector environment variables, too:
 
 ```shell
 root@gind-machine-0:/# gardenadm connect --bootstrap-token ... --ca-certificate ... https://api.virtual-garden.local.gardener.cloud

@@ -81,7 +81,7 @@ case "$COMMAND" in
     ;;
 
   down)
-    if [[ "$SCENARIO" != "connect" ]]; then
+    if [[ "$SCENARIO" != connect* ]]; then
       skaffold delete \
         -n "gardenadm-$SCENARIO"
     else

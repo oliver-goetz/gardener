@@ -300,6 +300,11 @@ kind2-down: kind-single-node2-down
 gind-up gind-down: $(YQ)
 	$(DEV_SETUP)/gind.sh $(subst gind-,,$@)
 
+
+# ginkind-{up,down}
+ginkind-up ginkind-down: $(YQ)
+	$(DEV_SETUP)/ginkind.sh $(subst ginkind-,,$@)
+
 # speed-up skaffold deployments by building all images concurrently
 export SKAFFOLD_BUILD_CONCURRENCY = 0
 # build the images for the platform matching the nodes of the active kubernetes cluster, even in `skaffold build`, which doesn't enable this by default
