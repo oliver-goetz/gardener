@@ -88,26 +88,26 @@ func (s *shootValidator) ValidateShootNodesCIDR(newShoot, oldShoot *core.Shoot) 
 		return allErrs
 	}
 
-	cidr, err := netip.ParsePrefix(*newShoot.Spec.Networking.Nodes)
+	_, err := netip.ParsePrefix(*newShoot.Spec.Networking.Nodes)
 	if err != nil {
 		allErrs = append(allErrs, field.Invalid(nodesPath, *newShoot.Spec.Networking.Nodes, "nodes CIDR must be a valid CIDR"))
 		return allErrs
 	}
 
-	allowedIPv4, allowedIPv6 := shootAllowedNodesCIDRIPv4, shootAllowedNodesCIDRIPv6
-	if s.isSelfHostedWithoutManagedInfrastructure(newShoot) {
-		allowedIPv4, allowedIPv6 = shootAllowedNodesCIDRIPv4GinD, shootAllowedNodesCIDRIPv6GinD
-	}
-
-	if cidr.Addr().Is4() {
-		if !isSubnet(allowedIPv4, cidr) {
-			allErrs = append(allErrs, field.Invalid(nodesPath, *newShoot.Spec.Networking.Nodes, fmt.Sprintf("nodes CIDR must be a subnet of %s", allowedIPv4.String())))
-		}
-	} else {
-		if !isSubnet(allowedIPv6, cidr) {
-			allErrs = append(allErrs, field.Invalid(nodesPath, *newShoot.Spec.Networking.Nodes, fmt.Sprintf("nodes CIDR must be a subnet of %s", allowedIPv6.String())))
-		}
-	}
+	//allowedIPv4, allowedIPv6 := shootAllowedNodesCIDRIPv4, shootAllowedNodesCIDRIPv6
+	//if s.isSelfHostedWithoutManagedInfrastructure(newShoot) {
+	//	allowedIPv4, allowedIPv6 = shootAllowedNodesCIDRIPv4GinD, shootAllowedNodesCIDRIPv6GinD
+	//}
+	//
+	//if cidr.Addr().Is4() {
+	//	if !isSubnet(allowedIPv4, cidr) {
+	//		allErrs = append(allErrs, field.Invalid(nodesPath, *newShoot.Spec.Networking.Nodes, fmt.Sprintf("nodes CIDR must be a subnet of %s", allowedIPv4.String())))
+	//	}
+	//} else {
+	//	if !isSubnet(allowedIPv6, cidr) {
+	//		allErrs = append(allErrs, field.Invalid(nodesPath, *newShoot.Spec.Networking.Nodes, fmt.Sprintf("nodes CIDR must be a subnet of %s", allowedIPv6.String())))
+	//	}
+	//}
 
 	return allErrs
 }

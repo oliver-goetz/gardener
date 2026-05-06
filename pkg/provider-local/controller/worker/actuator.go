@@ -82,9 +82,9 @@ func (a *actuator) Restore(ctx context.Context, log logr.Logger, worker *extensi
 	// automatically recreate new Machines now, which in fact will result in new pods and nodes.
 	// In summary, we are still not simulating the very same CPM scenario as for real clouds (here, the nodes/VMs are
 	// external and remain during the migration), but this is as good as we can get for the local scenario.
-	if err := a.deleteNoLongerNeededMachines(ctx, log, worker.Namespace); err != nil {
-		return fmt.Errorf("failed deleting no longer existing machines after restoration: %w", err)
-	}
+	//if err := a.deleteNoLongerNeededMachines(ctx, log, worker.Namespace); err != nil {
+	//	return fmt.Errorf("failed deleting no longer existing machines after restoration: %w", err)
+	//}
 
 	return a.Reconcile(ctx, log, worker, cluster)
 }

@@ -25,4 +25,6 @@ type ProviderSpec struct {
 	// IPPoolNameV6 is the name of the crd.projectcalico.org/v1.IPPool that should be used for machine pods for IPv6
 	// addresses.
 	IPPoolNameV6 string `json:"ipPoolNameV6,omitempty"`
+	// DockerNetworkName is the name of the docker network used by docker machine containers
+	DockerNetworkName string `json:"dockerNetworkName,omitempty"`
 }

@@ -137,8 +137,11 @@ spec:
         {{- end }}
         - name: backup-path
           mountPath: {{ .Values.controllers.backupbucket.localDir }}
+        - name: docker-socket
+          mountPath: /var/run/docker.sock
       securityContext:
         runAsUser: 0 # Need root permissions to clean files (created by etcd-backup-restore also via root user).
+        runAsGroup: 0
         # add provider-local process to root group to allow accessing the local backupbuckets directory
         supplementalGroups:
         - 0
@@ -153,3 +156,6 @@ spec:
         hostPath:
           path: {{ .Values.controllers.backupbucket.containerMountPath }}
           type: DirectoryOrCreate
+      - name: docker-socket
+        hostPath:
+          path: /var/run/docker.sock

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 
+	dockerclient "github.com/docker/docker/client"
 	machinev1alpha1 "github.com/gardener/machine-controller-manager/pkg/apis/machine/v1alpha1"
 	_ "github.com/gardener/machine-controller-manager/pkg/util/client/metrics/prometheus" // for client metric registration
 	"github.com/gardener/machine-controller-manager/pkg/util/provider/app"
@@ -26,7 +27,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/gardener/gardener/pkg/logger"
-	"github.com/gardener/gardener/pkg/provider-local/machine-provider/local"
+	"github.com/gardener/gardener/pkg/provider-local/machine-provider/localdocker"
 )
 
 func main() {
@@ -70,5 +71,10 @@ func newDriver(kubeconfig string) (driver.Driver, error) {
 		return nil, err
 	}
 
-	return local.NewDriver(c), nil
+	d, err := dockerclient.NewClientWithOpts(dockerclient.WithAPIVersionNegotiation())
+	if err != nil {
+		return nil, fmt.Errorf("unable to create docker client: %w", err)
+	}
+
+	return localdocker.NewDriver(c, d), nil
 }

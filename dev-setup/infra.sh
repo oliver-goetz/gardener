@@ -256,6 +256,12 @@ EOF
       docker container rm -f "$container"
     done
 
+    # Remove all provider-local containers to get rid of any orphaned containers.
+    echo "Removing provider-local containers of all clusters"
+    for container in $(docker container ls -aq --filter network=kind --filter label=app=machine); do
+      docker container rm -f -v "$container"
+    done
+
     # Delete the local backup bucket directory
     # When deleting the secondary cluster, we might still need it for the other cluster.
     # We need root privileges to clean the backup bucket directory, see https://github.com/gardener/gardener/issues/6752

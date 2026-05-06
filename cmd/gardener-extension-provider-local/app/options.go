@@ -27,7 +27,7 @@ import (
 	localextensionshootcontroller "github.com/gardener/gardener/pkg/provider-local/controller/extension/shoot"
 	localextensionshootafterworkercontroller "github.com/gardener/gardener/pkg/provider-local/controller/extension/shootafterworker"
 	healthcheckcontroller "github.com/gardener/gardener/pkg/provider-local/controller/healthcheck"
-	infrastructurecontroller "github.com/gardener/gardener/pkg/provider-local/controller/infrastructure"
+	infrastructurecontroller "github.com/gardener/gardener/pkg/provider-local/controller/infrastructuredocker"
 	networkpolicycontroller "github.com/gardener/gardener/pkg/provider-local/controller/networkpolicy"
 	operatingsystemconfigcontroller "github.com/gardener/gardener/pkg/provider-local/controller/operatingsystemconfig"
 	selfhostedshootexposurecontroller "github.com/gardener/gardener/pkg/provider-local/controller/selfhostedshootexposure"

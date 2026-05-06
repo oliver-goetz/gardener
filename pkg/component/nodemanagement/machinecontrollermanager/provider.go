@@ -77,6 +77,10 @@ func ProviderSidecarContainer(shoot *gardencorev1beta1.Shoot, controlPlaneNamesp
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: ptr.To(false),
 		},
+		VolumeMounts: []corev1.VolumeMount{{
+				Name: "docker",
+				MountPath: "/var/run/docker.sock",
+		}},
 	}
 
 	if !selfHostedShoot {

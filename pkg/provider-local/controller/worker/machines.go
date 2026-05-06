@@ -25,6 +25,7 @@ import (
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
 	api "github.com/gardener/gardener/pkg/provider-local/apis/local"
 	"github.com/gardener/gardener/pkg/provider-local/controller/infrastructure"
+	"github.com/gardener/gardener/pkg/provider-local/controller/infrastructuredocker"
 	"github.com/gardener/gardener/pkg/provider-local/local"
 	machineproviderlocal "github.com/gardener/gardener/pkg/provider-local/machine-provider/local"
 )
@@ -127,6 +128,8 @@ func (w *workerDelegate) generateMachineConfig(ctx context.Context) error {
 
 				providerConfig[key] = infrastructure.IPPoolName(w.cluster.Shoot.Status.TechnicalID, string(ipFamily))
 			}
+
+			providerConfig["dockerNetworkName"] = infrastructuredocker.GetDockerNetworkName(*w.cluster.Shoot.Spec.Networking.Nodes)
 
 			providerConfigBytes, err := json.Marshal(providerConfig)
 			if err != nil {
