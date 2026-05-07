@@ -35,7 +35,7 @@ func New(mgr manager.Manager) (*extensionswebhook.Webhook, error) {
 		Validators: map[extensionswebhook.Validator][]extensionswebhook.Type{
 			NewCloudProfileValidator(mgr):           {{Obj: &core.CloudProfile{}}},
 			NewNamespacedCloudProfileValidator(mgr): {{Obj: &core.NamespacedCloudProfile{}}},
-			NewShootValidator():                     {{Obj: &core.Shoot{}}},
+			NewShootValidator(mgr.GetClient()):      {{Obj: &core.Shoot{}}},
 			NewWorkloadIdentityValidator():          {{Obj: &securityv1alpha1.WorkloadIdentity{}}},
 		},
 		Target: extensionswebhook.TargetSeed,

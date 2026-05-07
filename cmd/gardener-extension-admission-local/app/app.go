@@ -27,6 +27,7 @@ import (
 	"github.com/gardener/gardener/extensions/pkg/util"
 	extensionscmdwebhook "github.com/gardener/gardener/extensions/pkg/webhook/cmd"
 	gardencoreinstall "github.com/gardener/gardener/pkg/apis/core/install"
+	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	v1beta1constants "github.com/gardener/gardener/pkg/apis/core/v1beta1/constants"
 	securityinstall "github.com/gardener/gardener/pkg/apis/security/install"
 	gardenerhealthz "github.com/gardener/gardener/pkg/healthz"
@@ -113,9 +114,11 @@ func NewAdmissionCommand(ctx context.Context) *cobra.Command {
 				managerOptions.LeaderElectionConfig = sourceClusterConfig
 			} else {
 				// Restrict the cache for secrets to the configured namespace to avoid the need for cluster-wide list/watch permissions.
+				// Seed objects are cached cluster-wide as they are needed by the shoot validator.
 				managerOptions.Cache = cache.Options{
 					ByObject: map[client.Object]cache.ByObject{
-						&corev1.Secret{}: {Namespaces: map[string]cache.Config{webhookOptions.Server.Completed().Namespace: {}}},
+						&corev1.Secret{}:          {Namespaces: map[string]cache.Config{webhookOptions.Server.Completed().Namespace: {}}},
+						&gardencorev1beta1.Seed{}: {},
 					},
 				}
 			}

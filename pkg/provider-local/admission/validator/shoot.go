@@ -41,15 +41,17 @@ func init() {
 	utilruntime.Must(gardencoreinstall.AddToScheme(gardenCoreScheme))
 }
 
-type shootValidator struct{}
+type shootValidator struct {
+	gardenClient client.Reader
+}
 
 // NewShootValidator returns a new instance of a Shoot validator.
-func NewShootValidator() extensionswebhook.Validator {
-	return &shootValidator{}
+func NewShootValidator(gardenClient client.Reader) extensionswebhook.Validator {
+	return &shootValidator{gardenClient: gardenClient}
 }
 
 // Validate validates the given Shoot object.
-func (s *shootValidator) Validate(_ context.Context, newObj, oldObj client.Object) error {
+func (s *shootValidator) Validate(ctx context.Context, newObj, oldObj client.Object) error {
 	newShoot, ok := newObj.(*core.Shoot)
 	if !ok {
 		return fmt.Errorf("expected Shoot, but got %T", newObj)
@@ -68,13 +70,13 @@ func (s *shootValidator) Validate(_ context.Context, newObj, oldObj client.Objec
 
 	allErrs := field.ErrorList{}
 	if !helper.IsWorkerless(newShoot) {
-		allErrs = append(allErrs, s.ValidateShootNodesCIDR(newShoot, oldShoot)...)
+		allErrs = append(allErrs, s.ValidateShootNodesCIDR(ctx, newShoot, oldShoot)...)
 	}
 
 	return allErrs.ToAggregate()
 }
 
-func (s *shootValidator) ValidateShootNodesCIDR(newShoot, oldShoot *core.Shoot) field.ErrorList {
+func (s *shootValidator) ValidateShootNodesCIDR(ctx context.Context, newShoot, oldShoot *core.Shoot) field.ErrorList {
 	allErrs := field.ErrorList{}
 
 	// only validate shoot nodes CIDR on creation or if it is changed
@@ -94,6 +96,26 @@ func (s *shootValidator) ValidateShootNodesCIDR(newShoot, oldShoot *core.Shoot) 
 		return allErrs
 	}
 
+	// If a seed is already assigned, validate that the nodes CIDR is a subnet of the seed's pod network.
+	// In provider-local, machine pods run in the seed cluster and receive IPs from its pod CIDR, so the
+	// shoot's nodes CIDR must match that range for calico IP autodetection to work correctly.
+	if newShoot.Spec.SeedName != nil {
+		seed := &gardencorev1beta1.Seed{}
+		if err := s.gardenClient.Get(ctx, client.ObjectKey{Name: *newShoot.Spec.SeedName}, seed); err != nil {
+			return append(allErrs, field.InternalError(nodesPath, err))
+		}
+		seedPodsCIDR, err := netip.ParsePrefix(seed.Spec.Networks.Pods)
+		if err != nil {
+			return append(allErrs, field.InternalError(nodesPath, fmt.Errorf("failed to parse seed pod network CIDR %q: %w", seed.Spec.Networks.Pods, err)))
+		}
+		if !isSubnet(seedPodsCIDR, cidr) {
+			allErrs = append(allErrs, field.Invalid(nodesPath, *newShoot.Spec.Networking.Nodes,
+				fmt.Sprintf("nodes CIDR must be a subnet of the seed's pod network %s", seedPodsCIDR)))
+		}
+		return allErrs
+	}
+
+	// No seed assigned yet: fall back to validating against the known allowed CIDRs for the local setup.
 	allowedIPv4, allowedIPv6 := shootAllowedNodesCIDRIPv4, shootAllowedNodesCIDRIPv6
 	if s.isSelfHostedWithoutManagedInfrastructure(newShoot) {
 		allowedIPv4, allowedIPv6 = shootAllowedNodesCIDRIPv4GinD, shootAllowedNodesCIDRIPv6GinD

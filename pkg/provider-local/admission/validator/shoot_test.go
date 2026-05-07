@@ -10,10 +10,15 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	extensionswebhook "github.com/gardener/gardener/extensions/pkg/webhook"
 	"github.com/gardener/gardener/pkg/apis/core"
+	gardencoreinstall "github.com/gardener/gardener/pkg/apis/core/install"
+	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	"github.com/gardener/gardener/pkg/provider-local/admission/validator"
 )
 
@@ -26,7 +31,7 @@ var _ = Describe("Shoot Validator", func() {
 	)
 
 	BeforeEach(func() {
-		shootValidator = validator.NewShootValidator()
+		shootValidator = validator.NewShootValidator(nil)
 		shoot = &core.Shoot{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "shoot-1",
@@ -163,6 +168,50 @@ var _ = Describe("Shoot Validator", func() {
 				shoot.Spec.CredentialsBindingName = ptr.To("my-binding")
 				shoot.Spec.Networking.Nodes = ptr.To("10.0.0.0/24")
 				Expect(shootValidator.Validate(ctx, shoot, nil)).To(Succeed())
+			})
+		})
+		When("shoot has a seed assigned", func() {
+			var (
+				fakeClient   client.Client
+				seedPodsCIDR string
+			)
+
+			BeforeEach(func() {
+				scheme := runtime.NewScheme()
+				Expect(gardencoreinstall.AddToScheme(scheme)).To(Succeed())
+				fakeClient = fakeclient.NewClientBuilder().WithScheme(scheme).Build()
+				seedPodsCIDR = "10.3.0.0/16"
+				seed := &gardencorev1beta1.Seed{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-seed"},
+					Spec: gardencorev1beta1.SeedSpec{
+						Networks: gardencorev1beta1.SeedNetworks{
+							Pods: seedPodsCIDR,
+						},
+					},
+				}
+				Expect(fakeClient.Create(ctx, seed)).To(Succeed())
+				shootValidator = validator.NewShootValidator(fakeClient)
+				shoot.Spec.SeedName = ptr.To("test-seed")
+			})
+
+			It("should succeed when nodes CIDR is a subnet of the seed's pod CIDR", func() {
+				shoot.Spec.Networking.Nodes = ptr.To("10.3.0.0/24")
+				Expect(shootValidator.Validate(ctx, shoot, nil)).To(Succeed())
+			})
+
+			It("should succeed when nodes CIDR equals the seed's pod CIDR", func() {
+				shoot.Spec.Networking.Nodes = ptr.To("10.3.0.0/16")
+				Expect(shootValidator.Validate(ctx, shoot, nil)).To(Succeed())
+			})
+
+			It("should fail when nodes CIDR is not a subnet of the seed's pod CIDR", func() {
+				shoot.Spec.Networking.Nodes = ptr.To("10.0.0.0/24")
+				Expect(shootValidator.Validate(ctx, shoot, nil)).To(MatchError(ContainSubstring("nodes CIDR must be a subnet of the seed's pod network 10.3.0.0/16")))
+			})
+
+			It("should fail when nodes CIDR has a shorter prefix than the seed's pod CIDR", func() {
+				shoot.Spec.Networking.Nodes = ptr.To("10.3.0.0/8")
+				Expect(shootValidator.Validate(ctx, shoot, nil)).To(MatchError(ContainSubstring("nodes CIDR must be a subnet of the seed's pod network 10.3.0.0/16")))
 			})
 		})
 	})
