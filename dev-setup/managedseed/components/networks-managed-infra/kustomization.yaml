@@ -12,6 +12,12 @@ patches:
       - op: replace
         path: /spec/gardenlet/config/seedConfig/spec/networks/services
         value: 10.4.0.0/16
+      - op: replace
+        path: /spec/gardenlet/config/seedConfig/spec/networks/shootDefaults/pods
+        value: 10.5.0.0/16
+      - op: replace
+        path: /spec/gardenlet/config/seedConfig/spec/networks/shootDefaults/services
+        value: 10.6.0.0/16
     target:
       group: seedmanagement.gardener.cloud
       kind: ManagedSeed
