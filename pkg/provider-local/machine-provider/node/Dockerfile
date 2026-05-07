@@ -31,8 +31,11 @@ COPY run-userdata.sh /run-userdata.sh
 COPY run-userdata.service /etc/systemd/system
 RUN systemctl enable run-userdata.service
 
+COPY entrypoint-wrapper.sh /entrypoint-wrapper.sh
+RUN chmod +x /entrypoint-wrapper.sh
+
 RUN runc --version ; containerd --version
 
 RUN chmod 755 /etc/sysctl.d/
 
-ENTRYPOINT ["/usr/local/bin/entrypoint", "/sbin/init"]
+ENTRYPOINT ["/entrypoint-wrapper.sh", "/sbin/init"]
