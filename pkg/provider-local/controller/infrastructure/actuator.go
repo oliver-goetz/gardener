@@ -64,16 +64,17 @@ func (a *actuator) Reconcile(ctx context.Context, log logr.Logger, infrastructur
 					{
 						IPBlock: &networkingv1.IPBlock{CIDR: loadbalancer.InternalRangeV6},
 					},
-				}},
-			},
+				},
+			}},
 			Egress: []networkingv1.NetworkPolicyEgressRule{{
 				To: []networkingv1.NetworkPolicyPeer{
 					{
 						PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "machine"}},
 					},
+					// The registry mirrors run in the kind network and need to be accessed from the machine pods, so we
+					// allow the whole CIDR.
 					{
-						NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "registry"}},
-						PodSelector:       &metav1.LabelSelector{MatchLabels: map[string]string{"app": "registry"}},
+						IPBlock: &networkingv1.IPBlock{CIDR: "172.18.0.0/24"},
 					},
 				},
 			}},
