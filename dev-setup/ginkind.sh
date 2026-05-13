@@ -33,6 +33,7 @@ up() {
 
   # Run `gardenadm bootstrap` and export the kubeconfig for the self-hosted shoot
   if ((level >= 2)); then
+    make gardenadm
     local generated_dir="$(dirname "$0")/../dev-setup/gardenadm/resources/generated"
     export IMAGEVECTOR_OVERWRITE="$generated_dir/.imagevector-overwrite.yaml"
     export IMAGEVECTOR_OVERWRITE_CHARTS="$generated_dir/.imagevector-overwrite-charts.yaml"
